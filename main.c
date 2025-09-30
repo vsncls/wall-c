@@ -1,15 +1,35 @@
-#include <arpa/inet.h>
-#include <ctype.h>
+#include "wall.h"
+#include "test.c"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#include <unistd.h> // For getopt
 
 #define DEFAULT_PORT 9
 #define MAC_ADDR_LEN 6
 #define PACKET_LEN 102
 #define HARDCODED_MAC "AA:BB:CC:DD:EE:FF" // Dewey hardcoded MAC address
+
+// Function prototypes
+void print_usage(const char *prog_name);
+int validate_mac(const char *mac);
+int validate_ip(const char *ip);
+int validate_port(int port);
+void parse_mac(const char *mac_str, unsigned char *mac_bin);
+void build_magic_packet(const unsigned char *mac, unsigned char *packet);
+int send_wol_packet(const char *broadcast_ip, int port,
+                    const unsigned char *packet, size_t packet_len);
+
+
+// Print usage information
+void print_usage(const char *prog_name) {
+    fprintf(stderr, "Usage: %s [-m <mac_address>] [-b <broadcast_ip>] [-p <port>] [-t]\n", prog_name);
+    fprintf(stderr, "  -m <mac_address>    : MAC address to wake up (default: %s)\n", HARDCODED_MAC);
+    fprintf(stderr, "  -b <broadcast_ip>   : Broadcast IP address (default: 255.255.255.255)\n");
+    fprintf(stderr, "  -p <port>           : Port number (default: 9)\n");
+    fprintf(stderr, "  -t                  : Run validation tests\n");
+    fprintf(stderr, "  -h                  : Display this help message\n");
+}
 
 // Validate MAC address format (e.g., "AA:BB:CC:DD:EE:FF")
 int validate_mac(const char *mac) {
@@ -98,39 +118,60 @@ int send_wol_packet(const char *broadcast_ip, int port,
 
 // Main function
 int main(int argc, char *argv[]) {
-  const char *mac_str = HARDCODED_MAC;        // Default MAC address
-  const char *broadcast_ip = "192.168.1.255"; // Default broadcast IP
-  int port = DEFAULT_PORT;                    // Default port
+    const char *mac_str = HARDCODED_MAC;
+    const char *broadcast_ip = "255.255.255.255"; // Default broadcast IP
+    int port = DEFAULT_PORT;
+    int opt;
 
-  if (argc >= 2) {
-    mac_str = argv[1]; // Override default MAC if provided
-  }
+    while ((opt = getopt(argc, argv, "m:b:p:th")) != -1) {
+        switch (opt) {
+            case 'm':
+                mac_str = optarg;
+                break;
+            case 'b':
+                broadcast_ip = optarg;
+                break;
+            case 'p':
+                port = atoi(optarg);
+                break;
+            case 't':
+                test_validation();
+                return EXIT_SUCCESS;
+            case 'h':
+                print_usage(argv[0]);
+                return EXIT_SUCCESS;
+            default: /* '?' */
+                print_usage(argv[0]);
+                return EXIT_FAILURE;
+        }
+    }
 
-  if (argc >= 3) {
-    broadcast_ip = argv[2]; // Override default broadcast IP if provided
-  }
+    if (!validate_mac(mac_str)) {
+        fprintf(stderr, "Invalid MAC address format. Use XX:XX:XX:XX:XX:XX\n");
+        return EXIT_FAILURE;
+    }
 
-  if (argc >= 4) {
-    port = atoi(argv[3]); // Override default port if provided
-  }
+    if (!validate_ip(broadcast_ip)) {
+        fprintf(stderr, "Invalid IP address format. Use IPv4 format (e.g., 192.168.1.255)\n");
+        return EXIT_FAILURE;
+    }
 
-  if (!validate_mac(mac_str)) {
-    fprintf(stderr, "Invalid MAC address format. Use XX:XX:XX:XX:XX:XX\n");
-    return EXIT_FAILURE;
-  }
+    if (!validate_port(port)) {
+        fprintf(stderr, "Invalid port number. Use a port between 1 and 65535\n");
+        return EXIT_FAILURE;
+    }
 
-  unsigned char mac_bin[MAC_ADDR_LEN];
-  parse_mac(mac_str, mac_bin);
+    unsigned char mac_bin[MAC_ADDR_LEN];
+    parse_mac(mac_str, mac_bin);
 
-  unsigned char magic_packet[PACKET_LEN];
-  build_magic_packet(mac_bin, magic_packet);
+    unsigned char magic_packet[PACKET_LEN];
+    build_magic_packet(mac_bin, magic_packet);
 
-  if (send_wol_packet(broadcast_ip, port, magic_packet, sizeof(magic_packet)) ==
-      0) {
-    printf("Magic packet sent to %s\n", mac_str);
-    return EXIT_SUCCESS;
-  } else {
-    fprintf(stderr, "Failed to send magic packet\n");
-    return EXIT_FAILURE;
-  }
+    if (send_wol_packet(broadcast_ip, port, magic_packet, sizeof(magic_packet)) == 0) {
+        printf("Magic packet sent to %s\n", mac_str);
+        return EXIT_SUCCESS;
+    } else {
+        fprintf(stderr, "Failed to send magic packet\n");
+        return EXIT_FAILURE;
+    }
 }
