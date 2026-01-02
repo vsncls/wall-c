@@ -12,8 +12,8 @@
 #define DEFAULT_PORT 9
 #define MAC_ADDR_LEN 6
 #define PACKET_LEN 102
-#define HARDCODED_MAC "AA:BB:CC:DD:EE:FF" // Dewey hardcoded MAC address
 
+char *read_mac_from_config(void);
 int validate_mac(const char *mac);
 int validate_ip(const char *ip);
 int validate_port(int port);
@@ -23,5 +23,6 @@ int send_wol_packet(const char *broadcast_ip, int port,
                     const unsigned char *packet, size_t packet_len);
 
 void test_validation();
+void test_config_read();
 
 #endif
