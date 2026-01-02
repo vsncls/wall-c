@@ -191,6 +191,7 @@ int main(int argc, char *argv[]) {
                 break;
             case 't':
                 test_validation();
+                test_config_read();
                 if (config_mac) free(config_mac);
                 return EXIT_SUCCESS;
             case 'h':
