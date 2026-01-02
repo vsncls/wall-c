@@ -10,7 +10,7 @@
 #define MAC_ADDR_LEN 6
 #define PACKET_LEN 102
 #define CONFIG_FILE_NAME "wall-c/config"
-#define MAX_MAC_LEN 18
+#define MAX_MAC_LEN 128
 
 // Function prototypes
 void print_usage(const char *prog_name);
@@ -63,6 +63,18 @@ char *read_mac_from_config(void) {
         while (len > 0 && (mac[len-1] == '\n' || mac[len-1] == '\r' || mac[len-1] == ' ' || mac[len-1] == '\t')) {
             mac[--len] = '\0';
         }
+        
+        // Remove leading whitespace
+        char *start = mac;
+        while (*start == ' ' || *start == '\t') {
+            start++;
+        }
+        
+        // If we trimmed leading whitespace, move the string
+        if (start != mac) {
+            memmove(mac, start, strlen(start) + 1);
+        }
+        
         fclose(file);
         return mac;
     }
