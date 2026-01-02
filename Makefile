@@ -24,13 +24,36 @@ test: wall-c
 # Memory leak checking - uses appropriate tool based on OS
 memcheck: wall-c
 ifeq ($(UNAME_S),Darwin)
-	@echo "Running memory leak check with macOS leaks tool..."
-	@MallocStackLogging=1 ./$(BUILD_DIR)/wall-c -t; \
-	echo "Checking for leaks..."; \
-	leaks wall-c 2>/dev/null || echo "No leaks found or process already exited (this is expected for short tests)"
+	@echo "========================================="
+	@echo "  Memory Leak Analysis (macOS)"
+	@echo "========================================="
+	@echo ""
+	@echo "→ Running tests with malloc stack logging enabled..."
+	@MallocStackLogging=1 ./$(BUILD_DIR)/wall-c -t 2>&1 | sed 's/^/  │ /'
+	@echo ""
+	@echo "→ Analyzing memory allocations..."
+	@if leaks wall-c 2>&1 | grep -q "cannot find"; then \
+		echo "  │ ✓ Process exited cleanly (short-lived test process)"; \
+		echo "  │ ℹ  For long-running processes, use: leaks <pid>"; \
+	else \
+		leaks wall-c 2>&1 | sed 's/^/  │ /'; \
+	fi
+	@echo ""
+	@echo "========================================="
+	@echo "  Analysis Complete"
+	@echo "========================================="
 else
-	@echo "Running memory leak check with valgrind..."
-	$(VALGRIND) $(VALGRIND_FLAGS) ./$(BUILD_DIR)/wall-c -t
+	@echo "========================================="
+	@echo "  Memory Leak Analysis (Valgrind)"
+	@echo "========================================="
+	@echo ""
+	@$(VALGRIND) $(VALGRIND_FLAGS) ./$(BUILD_DIR)/wall-c -t 2>&1 | \
+		sed 's/^==[0-9]*==/  [valgrind]/' | \
+		sed 's/^/  /'
+	@echo ""
+	@echo "========================================="
+	@echo "  Analysis Complete"
+	@echo "========================================="
 endif
 
 # Keep valgrind target for explicit use on Linux
