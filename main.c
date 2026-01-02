@@ -4,14 +4,17 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h> // For getopt
+#include <sys/stat.h>
 
 #define DEFAULT_PORT 9
 #define MAC_ADDR_LEN 6
 #define PACKET_LEN 102
-#define HARDCODED_MAC "AA:BB:CC:DD:EE:FF" // Dewey hardcoded MAC address
+#define CONFIG_FILE_NAME "wall-c/config"
+#define MAX_MAC_LEN 18
 
 // Function prototypes
 void print_usage(const char *prog_name);
+char *read_mac_from_config(void);
 int validate_mac(const char *mac);
 int validate_ip(const char *ip);
 int validate_port(int port);
@@ -21,14 +24,63 @@ int send_wol_packet(const char *broadcast_ip, int port,
                     const unsigned char *packet, size_t packet_len);
 
 
+// Read MAC address from XDG config file
+char *read_mac_from_config(void) {
+    char *config_path = NULL;
+    char *xdg_config_home = getenv("XDG_CONFIG_HOME");
+    char *home = getenv("HOME");
+    
+    // Determine config directory
+    if (xdg_config_home && xdg_config_home[0] != '\0') {
+        config_path = malloc(strlen(xdg_config_home) + strlen(CONFIG_FILE_NAME) + 2);
+        if (!config_path) return NULL;
+        sprintf(config_path, "%s/%s", xdg_config_home, CONFIG_FILE_NAME);
+    } else if (home && home[0] != '\0') {
+        config_path = malloc(strlen(home) + strlen(CONFIG_FILE_NAME) + 11);
+        if (!config_path) return NULL;
+        sprintf(config_path, "%s/.config/%s", home, CONFIG_FILE_NAME);
+    } else {
+        return NULL;
+    }
+    
+    FILE *file = fopen(config_path, "r");
+    free(config_path);
+    
+    if (!file) {
+        return NULL;
+    }
+    
+    char *mac = malloc(MAX_MAC_LEN);
+    if (!mac) {
+        fclose(file);
+        return NULL;
+    }
+    
+    // Read the first line and trim whitespace
+    if (fgets(mac, MAX_MAC_LEN, file)) {
+        // Remove trailing newline/whitespace
+        size_t len = strlen(mac);
+        while (len > 0 && (mac[len-1] == '\n' || mac[len-1] == '\r' || mac[len-1] == ' ' || mac[len-1] == '\t')) {
+            mac[--len] = '\0';
+        }
+        fclose(file);
+        return mac;
+    }
+    
+    free(mac);
+    fclose(file);
+    return NULL;
+}
+
 // Print usage information
 void print_usage(const char *prog_name) {
     fprintf(stderr, "Usage: %s [-m <mac_address>] [-b <broadcast_ip>] [-p <port>] [-t]\n", prog_name);
-    fprintf(stderr, "  -m <mac_address>    : MAC address to wake up (default: %s)\n", HARDCODED_MAC);
+    fprintf(stderr, "  -m <mac_address>    : MAC address to wake up (required if not in config)\n");
     fprintf(stderr, "  -b <broadcast_ip>   : Broadcast IP address (default: 255.255.255.255)\n");
     fprintf(stderr, "  -p <port>           : Port number (default: 9)\n");
     fprintf(stderr, "  -t                  : Run validation tests\n");
     fprintf(stderr, "  -h                  : Display this help message\n");
+    fprintf(stderr, "\nConfig file location: $XDG_CONFIG_HOME/wall-c/config or ~/.config/wall-c/config\n");
 }
 
 // Validate MAC address format (e.g., "AA:BB:CC:DD:EE:FF")
@@ -118,15 +170,18 @@ int send_wol_packet(const char *broadcast_ip, int port,
 
 // Main function
 int main(int argc, char *argv[]) {
-    const char *mac_str = HARDCODED_MAC;
+    char *config_mac = read_mac_from_config();
+    const char *mac_str = config_mac;
     const char *broadcast_ip = "255.255.255.255"; // Default broadcast IP
     int port = DEFAULT_PORT;
     int opt;
+    int mac_from_cmdline = 0;
 
     while ((opt = getopt(argc, argv, "m:b:p:th")) != -1) {
         switch (opt) {
             case 'm':
                 mac_str = optarg;
+                mac_from_cmdline = 1;
                 break;
             case 'b':
                 broadcast_ip = optarg;
@@ -136,28 +191,40 @@ int main(int argc, char *argv[]) {
                 break;
             case 't':
                 test_validation();
+                if (config_mac) free(config_mac);
                 return EXIT_SUCCESS;
             case 'h':
                 print_usage(argv[0]);
+                if (config_mac) free(config_mac);
                 return EXIT_SUCCESS;
             default: /* '?' */
                 print_usage(argv[0]);
+                if (config_mac) free(config_mac);
                 return EXIT_FAILURE;
         }
     }
 
+    if (!mac_str) {
+        fprintf(stderr, "Error: No MAC address provided. Use -m option or configure in ~/.config/wall-c/config\n");
+        if (config_mac) free(config_mac);
+        return EXIT_FAILURE;
+    }
+
     if (!validate_mac(mac_str)) {
         fprintf(stderr, "Invalid MAC address format. Use XX:XX:XX:XX:XX:XX\n");
+        if (config_mac && !mac_from_cmdline) free(config_mac);
         return EXIT_FAILURE;
     }
 
     if (!validate_ip(broadcast_ip)) {
         fprintf(stderr, "Invalid IP address format. Use IPv4 format (e.g., 192.168.1.255)\n");
+        if (config_mac && !mac_from_cmdline) free(config_mac);
         return EXIT_FAILURE;
     }
 
     if (!validate_port(port)) {
         fprintf(stderr, "Invalid port number. Use a port between 1 and 65535\n");
+        if (config_mac && !mac_from_cmdline) free(config_mac);
         return EXIT_FAILURE;
     }
 
@@ -169,9 +236,15 @@ int main(int argc, char *argv[]) {
 
     if (send_wol_packet(broadcast_ip, port, magic_packet, sizeof(magic_packet)) == 0) {
         printf("Magic packet sent to %s\n", mac_str);
+        if (config_mac && !mac_from_cmdline) {
+            free(config_mac);
+        }
         return EXIT_SUCCESS;
     } else {
         fprintf(stderr, "Failed to send magic packet\n");
+        if (config_mac && !mac_from_cmdline) {
+            free(config_mac);
+        }
         return EXIT_FAILURE;
     }
 }
