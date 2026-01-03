@@ -69,7 +69,28 @@ void test_config_read() {
     free(mac);
     printf("  ✓ MAC with whitespace trimmed\n");
     
-    // Test 3: Empty config file
+    // Test 3: Malicious content in config file (shell injection attempts)
+    const char *malicious_inputs[] = {
+        "AA:BB:CC:DD:EE:FF; echo pwned",
+        "$(whoami)",
+        "`id`",
+        "AA:BB:CC:DD:EE:FF && ls",
+        "| cat /etc/hosts",
+        NULL
+    };
+    for (int i = 0; malicious_inputs[i] != NULL; i++) {
+        f = fopen(test_config_path, "w");
+        fprintf(f, "%s\n", malicious_inputs[i]);
+        fclose(f);
+        
+        mac = read_mac_from_config();
+        assert(mac != NULL); // File is read
+        assert(validate_mac(mac) == 0); // But validation rejects it
+        free(mac);
+    }
+    printf("  ✓ Malicious config content rejected by validation\n");
+    
+    // Test 4: Empty config file
     f = fopen(test_config_path, "w");
     fclose(f);
     
@@ -77,7 +98,7 @@ void test_config_read() {
     assert(mac == NULL);
     printf("  ✓ Empty config file returns NULL\n");
     
-    // Test 4: Non-existent config file
+    // Test 5: Non-existent config file
     unlink(test_config_path);
     mac = read_mac_from_config();
     assert(mac == NULL);

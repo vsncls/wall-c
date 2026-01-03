@@ -86,13 +86,30 @@ char *read_mac_from_config(void) {
 
 // Print usage information
 void print_usage(const char *prog_name) {
-    fprintf(stderr, "Usage: %s [-m <mac_address>] [-b <broadcast_ip>] [-p <port>] [-t]\n", prog_name);
+    fprintf(stderr, "Usage: %s [-m <mac_address>] [-b <broadcast_ip>] [-p <port>] [-y] [-t]\n", prog_name);
     fprintf(stderr, "  -m <mac_address>    : MAC address to wake up (required if not in config)\n");
     fprintf(stderr, "  -b <broadcast_ip>   : Broadcast IP address (default: 255.255.255.255)\n");
     fprintf(stderr, "  -p <port>           : Port number (default: 9)\n");
+    fprintf(stderr, "  -y                  : Skip confirmation prompt\n");
     fprintf(stderr, "  -t                  : Run validation tests\n");
     fprintf(stderr, "  -h                  : Display this help message\n");
     fprintf(stderr, "\nConfig file location: $XDG_CONFIG_HOME/wall-c/config or ~/.config/wall-c/config\n");
+}
+
+// Prompt user for confirmation, returns 1 if confirmed, 0 if cancelled
+int confirm_send(const char *mac, const char *broadcast_ip, int port) {
+    printf("Send WoL packet?\n");
+    printf("  MAC:       %s\n", mac);
+    printf("  Broadcast: %s\n", broadcast_ip);
+    printf("  Port:      %d\n", port);
+    printf("Confirm [y/N]: ");
+    fflush(stdout);
+    
+    int c = getchar();
+    // Consume rest of line
+    while (getchar() != '\n' && !feof(stdin));
+    
+    return (c == 'y' || c == 'Y');
 }
 
 // Validate MAC address format (e.g., "AA:BB:CC:DD:EE:FF")
@@ -188,8 +205,9 @@ int main(int argc, char *argv[]) {
     int port = DEFAULT_PORT;
     int opt;
     int mac_from_cmdline = 0;
+    int skip_confirm = 0;
 
-    while ((opt = getopt(argc, argv, "m:b:p:th")) != -1) {
+    while ((opt = getopt(argc, argv, "m:b:p:yth")) != -1) {
         switch (opt) {
             case 'm':
                 mac_str = optarg;
@@ -200,6 +218,9 @@ int main(int argc, char *argv[]) {
                 break;
             case 'p':
                 port = atoi(optarg);
+                break;
+            case 'y':
+                skip_confirm = 1;
                 break;
             case 't':
                 test_validation();
@@ -239,6 +260,15 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Invalid port number. Use a port between 1 and 65535\n");
         if (config_mac && !mac_from_cmdline) free(config_mac);
         return EXIT_FAILURE;
+    }
+
+    // Prompt for confirmation unless -y flag was provided
+    if (!skip_confirm) {
+        if (!confirm_send(mac_str, broadcast_ip, port)) {
+            printf("Cancelled.\n");
+            if (config_mac && !mac_from_cmdline) free(config_mac);
+            return EXIT_SUCCESS;
+        }
     }
 
     unsigned char mac_bin[MAC_ADDR_LEN];
