@@ -1,5 +1,4 @@
 #include "wall.h"
-#include "test.c"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -36,7 +35,8 @@ char *read_mac_from_config(void) {
         if (!config_path) return NULL;
         sprintf(config_path, "%s/%s", xdg_config_home, CONFIG_FILE_NAME);
     } else if (home && home[0] != '\0') {
-        config_path = malloc(strlen(home) + strlen(CONFIG_FILE_NAME) + 11);
+        // "/.config/" is 9 chars; +1 for null terminator
+        config_path = malloc(strlen(home) + strlen(CONFIG_FILE_NAME) + 10);
         if (!config_path) return NULL;
         sprintf(config_path, "%s/.config/%s", home, CONFIG_FILE_NAME);
     } else {
@@ -86,12 +86,11 @@ char *read_mac_from_config(void) {
 
 // Print usage information
 void print_usage(const char *prog_name) {
-    fprintf(stderr, "Usage: %s [-m <mac_address>] [-b <broadcast_ip>] [-p <port>] [-y] [-t]\n", prog_name);
+    fprintf(stderr, "Usage: %s [-m <mac_address>] [-b <broadcast_ip>] [-p <port>] [-y] [-h]\n", prog_name);
     fprintf(stderr, "  -m <mac_address>    : MAC address to wake up (required if not in config)\n");
     fprintf(stderr, "  -b <broadcast_ip>   : Broadcast IP address (default: 255.255.255.255)\n");
     fprintf(stderr, "  -p <port>           : Port number (default: 9)\n");
     fprintf(stderr, "  -y                  : Skip confirmation prompt\n");
-    fprintf(stderr, "  -t                  : Run validation tests\n");
     fprintf(stderr, "  -h                  : Display this help message\n");
     fprintf(stderr, "\nConfig file location: $XDG_CONFIG_HOME/wall-c/config or ~/.config/wall-c/config\n");
 }
@@ -198,6 +197,7 @@ int send_wol_packet(const char *broadcast_ip, int port,
 }
 
 // Main function
+#ifndef WALL_TEST
 int main(int argc, char *argv[]) {
     char *config_mac = read_mac_from_config();
     const char *mac_str = config_mac;
@@ -207,7 +207,13 @@ int main(int argc, char *argv[]) {
     int mac_from_cmdline = 0;
     int skip_confirm = 0;
 
-    while ((opt = getopt(argc, argv, "m:b:p:yth")) != -1) {
+    #ifdef WALL_TEST
+    #define GETOPT_STR "m:b:p:yth"
+    #else
+    #define GETOPT_STR "m:b:p:yh"
+    #endif
+
+    while ((opt = getopt(argc, argv, GETOPT_STR)) != -1) {
         switch (opt) {
             case 'm':
                 mac_str = optarg;
@@ -222,11 +228,13 @@ int main(int argc, char *argv[]) {
             case 'y':
                 skip_confirm = 1;
                 break;
+            #ifdef WALL_TEST
             case 't':
                 test_validation();
                 test_config_read();
                 if (config_mac) free(config_mac);
                 return EXIT_SUCCESS;
+            #endif
             case 'h':
                 print_usage(argv[0]);
                 if (config_mac) free(config_mac);
@@ -291,3 +299,4 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 }
+#endif

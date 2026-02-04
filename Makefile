@@ -1,6 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -Werror -std=c99 -g
 BUILD_DIR = build
+TEST_BIN = $(BUILD_DIR)/wall-c-test
 VALGRIND = valgrind
 VALGRIND_FLAGS = --leak-check=full --show-leak-kinds=all --track-origins=yes --verbose
 LEAKS = leaks
@@ -18,8 +19,12 @@ wall-c: main.c
 clean:
 	rm -rf $(BUILD_DIR)
 
-test: wall-c
-	./$(BUILD_DIR)/wall-c -t
+test: $(TEST_BIN)
+	./$(TEST_BIN)
+
+$(TEST_BIN): main.c test.c
+	mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -DWALL_TEST -o $(TEST_BIN) main.c test.c
 
 # Memory leak checking - uses appropriate tool based on OS
 memcheck: wall-c

@@ -111,3 +111,73 @@ void test_config_read() {
     
     printf("All config reading tests passed!\n");
 }
+
+static void test_long_home_path() {
+    printf("Testing long HOME path config resolution...\n");
+
+    char base_dir[] = "/tmp/wall-c-home-test-XXXXXX";
+    if (!mkdtemp(base_dir)) {
+        perror("Failed to create temp directory");
+        return;
+    }
+
+    // Build a long HOME path under the temp directory
+    char long_segment[128];
+    memset(long_segment, 'a', sizeof(long_segment) - 1);
+    long_segment[sizeof(long_segment) - 1] = '\0';
+
+    char long_home[512];
+    snprintf(long_home, sizeof(long_home), "%s/%s", base_dir, long_segment);
+    mkdir(long_home, 0755);
+
+    // Create ~/.config/wall-c/config under the long HOME path
+    char xdg_dir[512];
+    snprintf(xdg_dir, sizeof(xdg_dir), "%s/.config", long_home);
+    mkdir(xdg_dir, 0755);
+
+    char config_dir[512];
+    snprintf(config_dir, sizeof(config_dir), "%s/wall-c", xdg_dir);
+    mkdir(config_dir, 0755);
+
+    char config_path[512];
+    snprintf(config_path, sizeof(config_path), "%s/config", config_dir);
+
+    FILE *f = fopen(config_path, "w");
+    fprintf(f, "AA:BB:CC:DD:EE:FF\n");
+    fclose(f);
+
+    const char *old_home = getenv("HOME");
+    char old_home_buf[512];
+    if (old_home) {
+        strncpy(old_home_buf, old_home, sizeof(old_home_buf) - 1);
+        old_home_buf[sizeof(old_home_buf) - 1] = '\0';
+    }
+
+    unsetenv("XDG_CONFIG_HOME");
+    setenv("HOME", long_home, 1);
+
+    char *mac = read_mac_from_config();
+    assert(mac != NULL);
+    assert(strcmp(mac, "AA:BB:CC:DD:EE:FF") == 0);
+    free(mac);
+    printf("  ✓ Long HOME path config read\n");
+
+    if (old_home) {
+        setenv("HOME", old_home_buf, 1);
+    } else {
+        unsetenv("HOME");
+    }
+
+    unlink(config_path);
+    rmdir(config_dir);
+    rmdir(xdg_dir);
+    rmdir(long_home);
+    rmdir(base_dir);
+}
+
+int main(void) {
+    test_validation();
+    test_config_read();
+    test_long_home_path();
+    return 0;
+}

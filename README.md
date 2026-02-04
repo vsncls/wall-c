@@ -29,7 +29,7 @@ This creates the executable at `build/wall-c`.
 ## Usage
 
 ```bash
-./build/wall-c [-m <mac_address>] [-b <broadcast_ip>] [-p <port>] [-y] [-t] [-h]
+./build/wall-c [-m <mac_address>] [-b <broadcast_ip>] [-p <port>] [-y] [-h]
 ```
 
 ### Options
@@ -38,7 +38,6 @@ This creates the executable at `build/wall-c`.
 - `-b <broadcast_ip>` - Broadcast IP address (default: `255.255.255.255`)
 - `-p <port>` - Port number (default: `9`)
 - `-y` - Skip confirmation prompt
-- `-t` - Run validation tests
 - `-h` - Display help message
 
 By default, the program will display the packet details and ask for confirmation before sending. Use `-y` to bypass this prompt (useful for scripting).
@@ -57,9 +56,9 @@ Use default broadcast IP and port:
 
 Run validation tests:
 ```bash
-./build/wall-c -t
-# or
 make test
+# or
+./build/wall-c-test
 ```
 
 ## Configuration File
