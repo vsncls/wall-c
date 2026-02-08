@@ -23,7 +23,10 @@ This creates the executable at `build/wall-c`.
 
 - `make` or `make all` - Build the executable
 - `make clean` - Remove build directory
-- `make test` - Build and run validation tests
+- `make test` - Build and run unit tests
+- `make test-integration` - Run CLI integration tests (exit codes / invalid args)
+- `make test-all` - Run unit + integration tests
+- `make sanitize` - Build and run tests with AddressSanitizer + UndefinedBehaviorSanitizer
 - `make memcheck` - Build and run with memory leak detection (uses `leaks` on macOS, `valgrind` on Linux)
 
 ## Usage
@@ -34,13 +37,13 @@ This creates the executable at `build/wall-c`.
 
 ### Options
 
-- `-m <mac_address>` - Target MAC address (format: `XX:XX:XX:XX:XX:XX`)
+- `-m <mac_address>` - Target MAC address (formats: `XX:XX:XX:XX:XX:XX`, `XX-XX-XX-XX-XX-XX`, or `XXXXXXXXXXXX`)
 - `-b <broadcast_ip>` - Broadcast IP address (default: `255.255.255.255`)
 - `-p <port>` - Port number (default: `9`)
 - `-y` - Skip confirmation prompt
 - `-h` - Display help message
 
-By default, the program will display the packet details and ask for confirmation before sending. Use `-y` to bypass this prompt (useful for scripting).
+By default, the program will display the packet details and ask for confirmation before sending. Use `-y` to bypass this prompt (required for non-interactive scripting/CI).
 
 ### Examples
 
@@ -96,9 +99,15 @@ The `-m` flag will override the MAC address from the config file if both are pro
 
 The project includes comprehensive unit tests covering:
 - MAC address validation (valid/invalid formats)
+- MAC normalization and parsing behavior
 - IP address validation
 - Port number validation
+- Magic packet byte layout
 - Configuration file reading with various edge cases
+
+CLI integration tests cover:
+- Exit codes for invalid argument combinations
+- Non-interactive confirmation behavior
 
 Run tests with memory leak detection:
 ```bash

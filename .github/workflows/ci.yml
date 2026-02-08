@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        compiler: [gcc, clang]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show compiler
+        run: ${{ matrix.compiler }} --version
+
+      - name: Run unit tests
+        run: make clean && make test CC=${{ matrix.compiler }}
+
+      - name: Run CLI integration tests
+        run: make test-integration CC=${{ matrix.compiler }}
+
+  sanitizer:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show compiler
+        run: clang --version
+
+      - name: Run sanitizers
+        env:
+          ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1
+          UBSAN_OPTIONS: print_stacktrace=1
+        run: make clean && make sanitize CC=clang

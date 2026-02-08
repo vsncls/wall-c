@@ -103,6 +103,32 @@ static void require_rmdir(const char *path) {
     }
 }
 
+/*
+ * Verify packet structure exactly matches WoL spec:
+ * - bytes [0..5] are 0xFF
+ * - bytes [6..101] are 16 repeats of the target MAC
+ */
+static void test_magic_packet_layout(void) {
+    unsigned char mac[MAC_ADDR_LEN] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    unsigned char packet[PACKET_LEN];
+
+    printf("Testing magic packet byte layout...\n");
+    build_magic_packet(mac, packet);
+
+    for (int i = 0; i < 6; i++) {
+        assert(packet[i] == 0xFF);
+    }
+
+    for (int repeat = 0; repeat < 16; repeat++) {
+        for (int byte = 0; byte < MAC_ADDR_LEN; byte++) {
+            int index = 6 + (repeat * MAC_ADDR_LEN) + byte;
+            assert(packet[index] == mac[byte]);
+        }
+    }
+
+    printf("Magic packet layout test passed!\n");
+}
+
 /* Validate format-checking helpers with representative valid/invalid inputs. */
 void test_validation() {
     printf("Testing validation functions...\n");
@@ -247,17 +273,9 @@ void test_config_read() {
 static void test_long_home_path() {
     printf("Testing long HOME path config resolution...\n");
 
-<<<<<<< Updated upstream
-    char base_dir[] = "/tmp/wall-c-home-test-XXXXXX";
-    if (!mkdtemp(base_dir)) {
-        perror("Failed to create temp directory");
-        return;
-    }
-=======
     /* Build temporary directory root used as parent for long HOME. */
     char base_dir[256];
     create_temp_dir(base_dir, sizeof(base_dir), "/tmp/wall-c-home-test-");
->>>>>>> Stashed changes
 
     /* Generate a long directory segment to stress path construction. */
     char long_segment[128];
@@ -319,6 +337,7 @@ static void test_long_home_path() {
 /* Test runner entry point. */
 int main(void) {
     test_validation();
+    test_magic_packet_layout();
     test_config_read();
     test_long_home_path();
     return 0;

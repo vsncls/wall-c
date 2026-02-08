@@ -10,6 +10,11 @@
 - [x] Add tests for non-interactive confirmation policy helper.
 - [x] Extend MAC input support (lowercase, `-` separators, compact format) and normalize to canonical output.
 - [x] Add tests for accepted/rejected MAC normalization and parser behavior.
+- [x] Add GitHub Actions CI for `ubuntu-latest` and `macos-latest`.
+- [x] Build/test with both `gcc` and `clang`.
+- [x] Add sanitizer target (`-fsanitize=address,undefined`) and run it in CI.
+- [x] Add unit tests for `build_magic_packet` byte layout.
+- [x] Add CLI integration tests for exit codes and invalid argument combinations.
 
 ### Active Blocker
 - [x] No active blocker.
@@ -25,11 +30,11 @@
 - [x] Add tests for accepted and rejected MAC formats.
 
 ### P1: Testing + CI
-- [ ] Add GitHub Actions CI for `ubuntu-latest` and `macos-latest`.
-- [ ] Build/test with both `gcc` and `clang`.
-- [ ] Add sanitizer target (`-fsanitize=address,undefined`) and run it in CI.
-- [ ] Add unit tests for `build_magic_packet` byte layout.
-- [ ] Add CLI integration tests for exit codes and invalid argument combinations.
+- [x] Add GitHub Actions CI for `ubuntu-latest` and `macos-latest`.
+- [x] Build/test with both `gcc` and `clang`.
+- [x] Add sanitizer target (`-fsanitize=address,undefined`) and run it in CI.
+- [x] Add unit tests for `build_magic_packet` byte layout.
+- [x] Add CLI integration tests for exit codes and invalid argument combinations.
 
 ### P2: Maintainability
 - [ ] Refactor `main.c` into modules: `config.c`, `validate.c`, `packet.c`, `net.c`, `cli.c`.
