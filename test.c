@@ -17,6 +17,43 @@ static void fail_with_errno(const char *context) {
     exit(EXIT_FAILURE);
 }
 
+static void *require_malloc(size_t size) {
+    void *ptr = malloc(size);
+    if (!ptr) {
+        fail_with_errno("malloc");
+    }
+    return ptr;
+}
+
+/*
+ * Build an exact-size "a + b" path/string allocation.
+ * This avoids truncation-prone fixed buffers in tests.
+ */
+static char *concat2(const char *a, const char *b) {
+    size_t len_a = strlen(a);
+    size_t len_b = strlen(b);
+    char *out = require_malloc(len_a + len_b + 1);
+
+    memcpy(out, a, len_a);
+    memcpy(out + len_a, b, len_b);
+    out[len_a + len_b] = '\0';
+    return out;
+}
+
+/* Build an exact-size "a + b + c" allocation. */
+static char *concat3(const char *a, const char *b, const char *c) {
+    size_t len_a = strlen(a);
+    size_t len_b = strlen(b);
+    size_t len_c = strlen(c);
+    char *out = require_malloc(len_a + len_b + len_c + 1);
+
+    memcpy(out, a, len_a);
+    memcpy(out + len_a, b, len_b);
+    memcpy(out + len_a + len_b, c, len_c);
+    out[len_a + len_b + len_c] = '\0';
+    return out;
+}
+
 /*
  * Portable temp directory creator that does not depend on mkdtemp visibility.
  * Creates a unique path by using mkstemp, then replaces the file with a dir.
@@ -196,12 +233,10 @@ void test_config_read() {
     char test_config_dir[256];
     create_temp_dir(test_config_dir, sizeof(test_config_dir), "/tmp/wall-c-test-");
     
-    char test_config_file[256];
-    snprintf(test_config_file, sizeof(test_config_file), "%s/wall-c", test_config_dir);
+    char *test_config_file = concat2(test_config_dir, "/wall-c");
     require_mkdir(test_config_file);
     
-    char test_config_path[256];
-    snprintf(test_config_path, sizeof(test_config_path), "%s/wall-c/config", test_config_dir);
+    char *test_config_path = concat2(test_config_file, "/config");
     
     /* Test 1: canonical MAC should be read exactly as stored. */
     write_config_line(test_config_path, "AA:BB:CC:DD:EE:FF");
@@ -262,6 +297,8 @@ void test_config_read() {
     require_rmdir(test_config_file);
     require_rmdir(test_config_dir);
     require_unsetenv("XDG_CONFIG_HOME");
+    free(test_config_path);
+    free(test_config_file);
     
     printf("All config reading tests passed!\n");
 }
@@ -282,21 +319,17 @@ static void test_long_home_path() {
     memset(long_segment, 'a', sizeof(long_segment) - 1);
     long_segment[sizeof(long_segment) - 1] = '\0';
 
-    char long_home[512];
-    snprintf(long_home, sizeof(long_home), "%s/%s", base_dir, long_segment);
+    char *long_home = concat3(base_dir, "/", long_segment);
     require_mkdir(long_home);
 
     /* Create ~/.config/wall-c/config structure beneath synthetic HOME. */
-    char xdg_dir[512];
-    snprintf(xdg_dir, sizeof(xdg_dir), "%s/.config", long_home);
+    char *xdg_dir = concat2(long_home, "/.config");
     require_mkdir(xdg_dir);
 
-    char config_dir[512];
-    snprintf(config_dir, sizeof(config_dir), "%s/wall-c", xdg_dir);
+    char *config_dir = concat2(xdg_dir, "/wall-c");
     require_mkdir(config_dir);
 
-    char config_path[512];
-    snprintf(config_path, sizeof(config_path), "%s/config", config_dir);
+    char *config_path = concat2(config_dir, "/config");
 
     write_config_line(config_path, "AA:BB:CC:DD:EE:FF");
 
@@ -332,6 +365,10 @@ static void test_long_home_path() {
     require_rmdir(xdg_dir);
     require_rmdir(long_home);
     require_rmdir(base_dir);
+    free(config_path);
+    free(config_dir);
+    free(xdg_dir);
+    free(long_home);
 }
 
 /* Test runner entry point. */
