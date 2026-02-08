@@ -42,6 +42,12 @@ int validate_port(int port);
 /* Prompt only when interactive and not explicitly skipped. */
 int should_prompt_for_confirmation(int skip_confirm, int stdin_is_tty);
 
+/* Print CLI usage text. */
+void print_usage(const char *prog_name);
+
+/* Interactive confirmation prompt. Returns 1 for yes, 0 otherwise. */
+int confirm_send(const char *mac, const char *broadcast_ip, int port);
+
 /* Parse canonical MAC string into 6 bytes. Returns 1 on success. */
 int parse_mac(const char *mac_str, unsigned char *mac_bin);
 

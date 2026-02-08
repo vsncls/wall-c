@@ -15,6 +15,11 @@
 - [x] Add sanitizer target (`-fsanitize=address,undefined`) and run it in CI.
 - [x] Add unit tests for `build_magic_packet` byte layout.
 - [x] Add CLI integration tests for exit codes and invalid argument combinations.
+- [x] Refactor `main.c` into modules: `config.c`, `validate.c`, `packet.c`, `net.c`, `cli.c`.
+- [x] Keep `main.c` as orchestration only.
+- [x] Align `Makefile` and `build.zig` targets (`test`, `release`, `sanitizer`).
+- [x] Update `README.md` with exit codes, non-interactive/script usage, and automation examples.
+- [x] Add a `LICENSE` file.
 
 ### Active Blocker
 - [x] No active blocker.
@@ -37,17 +42,17 @@
 - [x] Add CLI integration tests for exit codes and invalid argument combinations.
 
 ### P2: Maintainability
-- [ ] Refactor `main.c` into modules: `config.c`, `validate.c`, `packet.c`, `net.c`, `cli.c`.
-- [ ] Keep `main.c` as orchestration only.
-- [ ] Align `Makefile` and `build.zig` targets (`test`, `release`, `sanitizer`).
-- [ ] Update `README.md`:
-- [ ] Document exit codes.
-- [ ] Document non-interactive/script usage.
-- [ ] Add automation examples.
-- [ ] Add a `LICENSE` file.
+- [x] Refactor `main.c` into modules: `config.c`, `validate.c`, `packet.c`, `net.c`, `cli.c`.
+- [x] Keep `main.c` as orchestration only.
+- [x] Align `Makefile` and `build.zig` targets (`test`, `release`, `sanitizer`).
+- [x] Update `README.md`:
+- [x] Document exit codes.
+- [x] Document non-interactive/script usage.
+- [x] Add automation examples.
+- [x] Add a `LICENSE` file.
 
 ### Done Criteria
 - [ ] CI green on macOS + Linux.
 - [ ] Sanitizer job has zero findings.
 - [ ] `make test` passes locally and in CI.
-- [ ] CLI behavior and docs are consistent.
+- [x] CLI behavior and docs are consistent.

@@ -26,6 +26,9 @@ jobs:
       - name: Run CLI integration tests
         run: make test-integration CC=${{ matrix.compiler }}
 
+      - name: Build release target
+        run: make release CC=${{ matrix.compiler }}
+
   sanitizer:
     runs-on: ubuntu-latest
     steps:

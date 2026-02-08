@@ -27,7 +27,13 @@ This creates the executable at `build/wall-c`.
 - `make test-integration` - Run CLI integration tests (exit codes / invalid args)
 - `make test-all` - Run unit + integration tests
 - `make sanitize` - Build and run tests with AddressSanitizer + UndefinedBehaviorSanitizer
+- `make release` - Build optimized release binary at `build/wall-c-release`
 - `make memcheck` - Build and run with memory leak detection (uses `leaks` on macOS, `valgrind` on Linux)
+
+Equivalent Zig steps:
+- `zig build test`
+- `zig build sanitize`
+- `zig build release`
 
 ## Usage
 
@@ -62,6 +68,36 @@ Run validation tests:
 make test
 # or
 ./build/wall-c-test
+```
+
+### Exit Codes
+
+- `0` - Successful send, help shown (`-h`), or user cancelled at confirmation prompt
+- `1` - Validation/configuration/runtime failure (invalid args, missing MAC, non-interactive run without `-y`, socket send failure)
+
+### Automation Examples
+
+Non-interactive run with explicit MAC:
+```bash
+./build/wall-c -m AA:BB:CC:DD:EE:FF -b 192.168.1.255 -p 9 -y
+```
+
+Non-interactive run with config file MAC:
+```bash
+./build/wall-c -y
+```
+
+Simple script pattern:
+```bash
+#!/bin/sh
+set -eu
+
+if ./build/wall-c -m AA:BB:CC:DD:EE:FF -y; then
+  echo "wake packet sent"
+else
+  echo "wake packet failed" >&2
+  exit 1
+fi
 ```
 
 ## Configuration File
@@ -118,4 +154,4 @@ This uses the native `leaks` utility on macOS or `valgrind` on Linux.
 
 ## License
 
-See repository for license information.
+MIT. See `LICENSE`.

@@ -1,8 +1,13 @@
 CC = gcc
 CFLAGS = -Wall -Werror -std=c99 -D_POSIX_C_SOURCE=200809L -g
 BUILD_DIR = build
+SRC_CORE = config.c validate.c packet.c net.c cli.c
+APP_SRCS = main.c $(SRC_CORE)
+TEST_SRCS = test.c config.c validate.c packet.c net.c
 TEST_BIN = $(BUILD_DIR)/wall-c-test
 SAN_TEST_BIN = $(BUILD_DIR)/wall-c-test-sanitize
+RELEASE_BIN = $(BUILD_DIR)/wall-c-release
+RELEASE_CFLAGS = -O2 -DNDEBUG
 SANITIZE_FLAGS = -fsanitize=address,undefined -fno-omit-frame-pointer
 INTEGRATION_TEST = sh ./scripts/integration_test.sh
 VALGRIND = valgrind
@@ -15,9 +20,13 @@ UNAME_S := $(shell uname -s)
 
 all: wall-c
 
-wall-c: main.c
+wall-c: $(APP_SRCS)
 	mkdir -p $(BUILD_DIR)
-	$(CC) $(CFLAGS) -o $(BUILD_DIR)/wall-c main.c
+	$(CC) $(CFLAGS) -o $(BUILD_DIR)/wall-c $(APP_SRCS)
+
+release: $(APP_SRCS)
+	mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(RELEASE_CFLAGS) -o $(RELEASE_BIN) $(APP_SRCS)
 
 clean:
 	rm -rf $(BUILD_DIR)
@@ -25,18 +34,18 @@ clean:
 test: $(TEST_BIN)
 	./$(TEST_BIN)
 
-$(TEST_BIN): main.c test.c
+$(TEST_BIN): $(TEST_SRCS)
 	mkdir -p $(BUILD_DIR)
-	$(CC) $(CFLAGS) -DWALL_TEST -o $(TEST_BIN) main.c test.c
+	$(CC) $(CFLAGS) -DWALL_TEST -o $(TEST_BIN) $(TEST_SRCS)
 
 test-integration: wall-c
 	$(INTEGRATION_TEST) ./$(BUILD_DIR)/wall-c
 
 test-all: test test-integration
 
-$(SAN_TEST_BIN): main.c test.c
+$(SAN_TEST_BIN): $(TEST_SRCS)
 	mkdir -p $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(SANITIZE_FLAGS) -DWALL_TEST -o $(SAN_TEST_BIN) main.c test.c
+	$(CC) $(CFLAGS) $(SANITIZE_FLAGS) -DWALL_TEST -o $(SAN_TEST_BIN) $(TEST_SRCS)
 
 sanitize: $(SAN_TEST_BIN)
 	./$(SAN_TEST_BIN)
@@ -80,4 +89,4 @@ endif
 valgrind: $(TEST_BIN)
 	$(VALGRIND) $(VALGRIND_FLAGS) ./$(TEST_BIN)
 
-.PHONY: all clean test test-integration test-all sanitize memcheck valgrind
+.PHONY: all clean test test-integration test-all sanitize memcheck valgrind release
