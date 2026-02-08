@@ -15,9 +15,12 @@
 void print_usage(const char *prog_name);
 char *read_mac_from_config(void);
 int validate_mac(const char *mac);
+int normalize_mac(const char *input_mac, char *normalized_mac,
+                  size_t normalized_size);
 int validate_ip(const char *ip);
 int validate_port(int port);
-void parse_mac(const char *mac_str, unsigned char *mac_bin);
+int should_prompt_for_confirmation(int skip_confirm, int stdin_is_tty);
+int parse_mac(const char *mac_str, unsigned char *mac_bin);
 void build_magic_packet(const unsigned char *mac, unsigned char *packet);
 int send_wol_packet(const char *broadcast_ip, int port,
                     const unsigned char *packet, size_t packet_len);
@@ -28,17 +31,28 @@ char *read_mac_from_config(void) {
     char *config_path = NULL;
     char *xdg_config_home = getenv("XDG_CONFIG_HOME");
     char *home = getenv("HOME");
+    size_t path_size = 0;
     
     // Determine config directory
     if (xdg_config_home && xdg_config_home[0] != '\0') {
-        config_path = malloc(strlen(xdg_config_home) + strlen(CONFIG_FILE_NAME) + 2);
+        path_size = strlen(xdg_config_home) + strlen(CONFIG_FILE_NAME) + 2;
+        config_path = malloc(path_size);
         if (!config_path) return NULL;
-        sprintf(config_path, "%s/%s", xdg_config_home, CONFIG_FILE_NAME);
+        if (snprintf(config_path, path_size, "%s/%s", xdg_config_home,
+                     CONFIG_FILE_NAME) < 0) {
+            free(config_path);
+            return NULL;
+        }
     } else if (home && home[0] != '\0') {
         // "/.config/" is 9 chars; +1 for null terminator
-        config_path = malloc(strlen(home) + strlen(CONFIG_FILE_NAME) + 10);
+        path_size = strlen(home) + strlen(CONFIG_FILE_NAME) + 10;
+        config_path = malloc(path_size);
         if (!config_path) return NULL;
-        sprintf(config_path, "%s/.config/%s", home, CONFIG_FILE_NAME);
+        if (snprintf(config_path, path_size, "%s/.config/%s", home,
+                     CONFIG_FILE_NAME) < 0) {
+            free(config_path);
+            return NULL;
+        }
     } else {
         return NULL;
     }
@@ -87,7 +101,7 @@ char *read_mac_from_config(void) {
 // Print usage information
 void print_usage(const char *prog_name) {
     fprintf(stderr, "Usage: %s [-m <mac_address>] [-b <broadcast_ip>] [-p <port>] [-y] [-h]\n", prog_name);
-    fprintf(stderr, "  -m <mac_address>    : MAC address to wake up (required if not in config)\n");
+    fprintf(stderr, "  -m <mac_address>    : MAC address (XX:XX:XX:XX:XX:XX, XX-XX-XX-XX-XX-XX, or XXXXXXXXXXXX)\n");
     fprintf(stderr, "  -b <broadcast_ip>   : Broadcast IP address (default: 255.255.255.255)\n");
     fprintf(stderr, "  -p <port>           : Port number (default: 9)\n");
     fprintf(stderr, "  -y                  : Skip confirmation prompt\n");
@@ -127,7 +141,69 @@ int validate_mac(const char *mac) {
     return 1;
 }
 
+<<<<<<< Updated upstream
 // Validate IP address format (e.g., "192.168.1.255")
+=======
+/*
+ * Normalize supported MAC formats into canonical uppercase colon format.
+ * Output format: "AA:BB:CC:DD:EE:FF".
+ */
+int normalize_mac(const char *input_mac, char *normalized_mac,
+                  size_t normalized_size) {
+    char hex[13];
+    size_t hex_index = 0;
+    size_t len = 0;
+
+    if (!input_mac || !normalized_mac || normalized_size < 18) {
+        return 0;
+    }
+
+    len = strlen(input_mac);
+
+    if (len == 17) {
+        char sep = input_mac[2];
+        if (sep != ':' && sep != '-') {
+            return 0;
+        }
+
+        for (size_t i = 0; i < len; i++) {
+            if (i % 3 == 2) {
+                if (input_mac[i] != sep) {
+                    return 0;
+                }
+            } else {
+                if (!isxdigit((unsigned char)input_mac[i])) {
+                    return 0;
+                }
+                hex[hex_index++] = (char)toupper((unsigned char)input_mac[i]);
+            }
+        }
+    } else if (len == 12) {
+        for (size_t i = 0; i < len; i++) {
+            if (!isxdigit((unsigned char)input_mac[i])) {
+                return 0;
+            }
+            hex[hex_index++] = (char)toupper((unsigned char)input_mac[i]);
+        }
+    } else {
+        return 0;
+    }
+
+    hex[hex_index] = '\0';
+    if (hex_index != 12) {
+        return 0;
+    }
+
+    if (snprintf(normalized_mac, normalized_size, "%.2s:%.2s:%.2s:%.2s:%.2s:%.2s",
+                 hex, hex + 2, hex + 4, hex + 6, hex + 8, hex + 10) < 0) {
+        return 0;
+    }
+
+    return 1;
+}
+
+/* Validate IPv4 string using inet_pton. */
+>>>>>>> Stashed changes
 int validate_ip(const char *ip) {
     struct sockaddr_in sa;
     return inet_pton(AF_INET, ip, &(sa.sin_addr)) != 0;
@@ -138,11 +214,32 @@ int validate_port(int port) {
     return port > 0 && port <= 65535;
 }
 
+<<<<<<< Updated upstream
 // Parse MAC address into binary format
 void parse_mac(const char *mac_str, unsigned char *mac_bin) {
   for (int i = 0; i < MAC_ADDR_LEN; i++) {
     sscanf(mac_str + (i * 3), "%2hhx", &mac_bin[i]);
   }
+=======
+/* Prompt only when interactive and confirmation wasn't skipped. */
+int should_prompt_for_confirmation(int skip_confirm, int stdin_is_tty) {
+    return !skip_confirm && stdin_is_tty;
+}
+
+/*
+ * Parse canonical MAC string into raw bytes.
+ * Caller should validate format before calling.
+ */
+int parse_mac(const char *mac_str, unsigned char *mac_bin) {
+    for (int i = 0; i < MAC_ADDR_LEN; i++) {
+        unsigned int byte = 0;
+        if (sscanf(mac_str + (i * 3), "%2x", &byte) != 1) {
+            return 0;
+        }
+        mac_bin[i] = (unsigned char)byte;
+    }
+    return 1;
+>>>>>>> Stashed changes
 }
 
 // Build the magic packet
@@ -206,6 +303,12 @@ int main(int argc, char *argv[]) {
     int opt;
     int mac_from_cmdline = 0;
     int skip_confirm = 0;
+<<<<<<< Updated upstream
+=======
+    int exit_code = EXIT_FAILURE;
+    char normalized_mac[18];
+    int stdin_is_tty = isatty(STDIN_FILENO);
+>>>>>>> Stashed changes
 
     #ifdef WALL_TEST
     #define GETOPT_STR "m:b:p:yth"
@@ -252,10 +355,25 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
+<<<<<<< Updated upstream
     if (!validate_mac(mac_str)) {
         fprintf(stderr, "Invalid MAC address format. Use XX:XX:XX:XX:XX:XX\n");
         if (config_mac && !mac_from_cmdline) free(config_mac);
         return EXIT_FAILURE;
+=======
+    if (!normalize_mac(mac_str, normalized_mac, sizeof(normalized_mac))) {
+        fprintf(stderr,
+                "Invalid MAC address format. Use XX:XX:XX:XX:XX:XX, "
+                "XX-XX-XX-XX-XX-XX, or XXXXXXXXXXXX\n");
+        goto cleanup;
+    }
+    mac_str = normalized_mac;
+
+    /* Validate all user-provided and defaulted inputs before networking. */
+    if (!validate_mac(mac_str)) {
+        fprintf(stderr, "Invalid normalized MAC address format\n");
+        goto cleanup;
+>>>>>>> Stashed changes
     }
 
     if (!validate_ip(broadcast_ip)) {
@@ -270,8 +388,22 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
+<<<<<<< Updated upstream
     // Prompt for confirmation unless -y flag was provided
     if (!skip_confirm) {
+=======
+    /*
+     * Interactive confirmation acts as a safety brake.
+     * Users can bypass it with -y for scripts/automation.
+     */
+    if (!skip_confirm && !stdin_is_tty) {
+        fprintf(stderr,
+                "Non-interactive stdin detected. Use -y to skip confirmation.\n");
+        goto cleanup;
+    }
+
+    if (should_prompt_for_confirmation(skip_confirm, stdin_is_tty)) {
+>>>>>>> Stashed changes
         if (!confirm_send(mac_str, broadcast_ip, port)) {
             printf("Cancelled.\n");
             if (config_mac && !mac_from_cmdline) free(config_mac);
@@ -280,7 +412,10 @@ int main(int argc, char *argv[]) {
     }
 
     unsigned char mac_bin[MAC_ADDR_LEN];
-    parse_mac(mac_str, mac_bin);
+    if (!parse_mac(mac_str, mac_bin)) {
+        fprintf(stderr, "Failed to parse normalized MAC address\n");
+        goto cleanup;
+    }
 
     unsigned char magic_packet[PACKET_LEN];
     build_magic_packet(mac_bin, magic_packet);

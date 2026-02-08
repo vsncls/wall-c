@@ -7,8 +7,107 @@
 
 #include "wall.h"
 
+/*
+ * This test binary focuses on pure helpers and config path behavior.
+ * Networking is intentionally not exercised here to keep tests deterministic.
+ */
+
+static void fail_with_errno(const char *context) {
+    perror(context);
+    exit(EXIT_FAILURE);
+}
+
+/*
+ * Portable temp directory creator that does not depend on mkdtemp visibility.
+ * Creates a unique path by using mkstemp, then replaces the file with a dir.
+ */
+static void create_temp_dir(char *path_buf, size_t path_buf_size,
+                            const char *prefix) {
+    int fd;
+
+    if (snprintf(path_buf, path_buf_size, "%sXXXXXX", prefix) >=
+        (int)path_buf_size) {
+        fprintf(stderr, "Temp path buffer too small\n");
+        exit(EXIT_FAILURE);
+    }
+
+    fd = mkstemp(path_buf);
+    if (fd < 0) {
+        fail_with_errno("mkstemp");
+    }
+    if (close(fd) != 0) {
+        fail_with_errno("close");
+    }
+    if (unlink(path_buf) != 0) {
+        fail_with_errno("unlink");
+    }
+    if (mkdir(path_buf, 0755) != 0) {
+        fail_with_errno("mkdir");
+    }
+}
+
+static void require_mkdir(const char *path) {
+    if (mkdir(path, 0755) != 0) {
+        fail_with_errno("mkdir");
+    }
+}
+
+static FILE *require_fopen(const char *path, const char *mode) {
+    FILE *f = fopen(path, mode);
+    if (!f) {
+        fail_with_errno("fopen");
+    }
+    return f;
+}
+
+static void require_fclose(FILE *f) {
+    if (fclose(f) != 0) {
+        fail_with_errno("fclose");
+    }
+}
+
+static void write_config_line(const char *path, const char *line) {
+    FILE *f = require_fopen(path, "w");
+    if (fprintf(f, "%s\n", line) < 0) {
+        fail_with_errno("fprintf");
+    }
+    require_fclose(f);
+}
+
+static void write_empty_file(const char *path) {
+    FILE *f = require_fopen(path, "w");
+    require_fclose(f);
+}
+
+static void require_setenv(const char *key, const char *value, int overwrite) {
+    if (setenv(key, value, overwrite) != 0) {
+        fail_with_errno("setenv");
+    }
+}
+
+static void require_unsetenv(const char *key) {
+    if (unsetenv(key) != 0) {
+        fail_with_errno("unsetenv");
+    }
+}
+
+static void require_unlink(const char *path) {
+    if (unlink(path) != 0) {
+        fail_with_errno("unlink");
+    }
+}
+
+static void require_rmdir(const char *path) {
+    if (rmdir(path) != 0) {
+        fail_with_errno("rmdir");
+    }
+}
+
+/* Validate format-checking helpers with representative valid/invalid inputs. */
 void test_validation() {
     printf("Testing validation functions...\n");
+
+    /* Canonical MAC format acceptance and rejection cases. */
     assert(validate_mac("AA:BB:CC:DD:EE:FF") == 1);
     assert(validate_mac("00:11:22:33:44:55") == 1);
     assert(validate_mac("invalid_mac") == 0);
@@ -16,52 +115,81 @@ void test_validation() {
     assert(validate_mac("AA:BB:CC:DD:EE:FF:") == 0);
     assert(validate_mac("AA:BB:CC:DD:EE:FG") == 0);
 
+    /* IPv4 validation accepts real addresses and rejects malformed strings. */
     assert(validate_ip("192.168.1.255") == 1);
     assert(validate_ip("127.0.0.1") == 1);
     assert(validate_ip("invalid_ip") == 0);
     assert(validate_ip("192.168.1.256") == 0);
     assert(validate_ip("192.168.1") == 0);
 
+    /* Port range boundaries for valid UDP destination values. */
     assert(validate_port(1) == 1);
     assert(validate_port(65535) == 1);
     assert(validate_port(0) == 0);
     assert(validate_port(65536) == 0);
+
+    /* Normalization accepts supported forms and returns canonical output. */
+    char normalized[18];
+    assert(normalize_mac("AA:BB:CC:DD:EE:FF", normalized,
+                         sizeof(normalized)) == 1);
+    assert(strcmp(normalized, "AA:BB:CC:DD:EE:FF") == 0);
+    assert(normalize_mac("aa-bb-cc-dd-ee-ff", normalized,
+                         sizeof(normalized)) == 1);
+    assert(strcmp(normalized, "AA:BB:CC:DD:EE:FF") == 0);
+    assert(normalize_mac("aabbccddeeff", normalized, sizeof(normalized)) == 1);
+    assert(strcmp(normalized, "AA:BB:CC:DD:EE:FF") == 0);
+
+    /* Normalization rejects malformed forms. */
+    assert(normalize_mac("AA:BB:CC:DD:EE", normalized, sizeof(normalized)) == 0);
+    assert(normalize_mac("AA/BB/CC/DD/EE/FF", normalized, sizeof(normalized)) == 0);
+    assert(normalize_mac("AA:BB-CC:DD-EE:FF", normalized, sizeof(normalized)) == 0);
+    assert(normalize_mac("GG:BB:CC:DD:EE:FF", normalized, sizeof(normalized)) == 0);
+
+    /* Parser succeeds for normalized input and fails for non-hex input. */
+    unsigned char mac_bin[MAC_ADDR_LEN];
+    assert(parse_mac("AA:BB:CC:DD:EE:FF", mac_bin) == 1);
+    assert(mac_bin[0] == 0xAA && mac_bin[5] == 0xFF);
+    assert(parse_mac("GG:BB:CC:DD:EE:FF", mac_bin) == 0);
+
+    /* Non-interactive confirmation policy is deterministic. */
+    assert(should_prompt_for_confirmation(0, 1) == 1);
+    assert(should_prompt_for_confirmation(1, 1) == 0);
+    assert(should_prompt_for_confirmation(0, 0) == 0);
+    assert(should_prompt_for_confirmation(1, 0) == 0);
     printf("All validation tests passed!\n");
 }
 
+/*
+ * Validate XDG config file parsing behavior.
+ * The test creates isolated temporary files to avoid mutating user config.
+ */
 void test_config_read() {
     printf("Testing config file reading...\n");
     
-    // Create a temporary test config directory
-    char test_config_dir[] = "/tmp/wall-c-test-XXXXXX";
-    if (!mkdtemp(test_config_dir)) {
-        perror("Failed to create temp directory");
-        return;
-    }
+    /* Create isolated temp directory root, then wall-c/config beneath it. */
+    char test_config_dir[256];
+    create_temp_dir(test_config_dir, sizeof(test_config_dir), "/tmp/wall-c-test-");
     
     char test_config_file[256];
     snprintf(test_config_file, sizeof(test_config_file), "%s/wall-c", test_config_dir);
-    mkdir(test_config_file, 0755);
+    require_mkdir(test_config_file);
     
     char test_config_path[256];
     snprintf(test_config_path, sizeof(test_config_path), "%s/wall-c/config", test_config_dir);
     
-    // Test 1: Valid MAC in config
-    FILE *f = fopen(test_config_path, "w");
-    fprintf(f, "AA:BB:CC:DD:EE:FF\n");
-    fclose(f);
+    /* Test 1: canonical MAC should be read exactly as stored. */
+    write_config_line(test_config_path, "AA:BB:CC:DD:EE:FF");
     
-    setenv("XDG_CONFIG_HOME", test_config_dir, 1);
+    /* Point config lookup at the temp tree via XDG_CONFIG_HOME override. */
+    require_setenv("XDG_CONFIG_HOME", test_config_dir, 1);
     char *mac = read_mac_from_config();
     assert(mac != NULL);
     assert(strcmp(mac, "AA:BB:CC:DD:EE:FF") == 0);
     free(mac);
     printf("  ✓ Valid MAC from config file\n");
     
-    // Test 2: MAC with whitespace
-    f = fopen(test_config_path, "w");
-    fprintf(f, "  11:22:33:44:55:66  \n");
-    fclose(f);
+    /* Test 2: leading/trailing whitespace should be trimmed in-place. */
+    write_config_line(test_config_path, "  11:22:33:44:55:66  ");
     
     mac = read_mac_from_config();
     assert(mac != NULL);
@@ -69,7 +197,10 @@ void test_config_read() {
     free(mac);
     printf("  ✓ MAC with whitespace trimmed\n");
     
-    // Test 3: Malicious content in config file (shell injection attempts)
+    /*
+     * Test 3: suspicious input should be read as plain text and then rejected
+     * by format validation. This verifies there is no shell evaluation path.
+     */
     const char *malicious_inputs[] = {
         "AA:BB:CC:DD:EE:FF; echo pwned",
         "$(whoami)",
@@ -79,9 +210,7 @@ void test_config_read() {
         NULL
     };
     for (int i = 0; malicious_inputs[i] != NULL; i++) {
-        f = fopen(test_config_path, "w");
-        fprintf(f, "%s\n", malicious_inputs[i]);
-        fclose(f);
+        write_config_line(test_config_path, malicious_inputs[i]);
         
         mac = read_mac_from_config();
         assert(mac != NULL); // File is read
@@ -90,62 +219,70 @@ void test_config_read() {
     }
     printf("  ✓ Malicious config content rejected by validation\n");
     
-    // Test 4: Empty config file
-    f = fopen(test_config_path, "w");
-    fclose(f);
+    /* Test 4: empty file has no first line and should return NULL. */
+    write_empty_file(test_config_path);
     
     mac = read_mac_from_config();
     assert(mac == NULL);
     printf("  ✓ Empty config file returns NULL\n");
     
-    // Test 5: Non-existent config file
-    unlink(test_config_path);
+    /* Test 5: missing file should also return NULL, not hard-fail. */
+    require_unlink(test_config_path);
     mac = read_mac_from_config();
     assert(mac == NULL);
     printf("  ✓ Missing config file returns NULL\n");
     
-    // Cleanup
-    rmdir(test_config_file);
-    rmdir(test_config_dir);
-    unsetenv("XDG_CONFIG_HOME");
+    /* Cleanup temp directories and restore process environment. */
+    require_rmdir(test_config_file);
+    require_rmdir(test_config_dir);
+    require_unsetenv("XDG_CONFIG_HOME");
     
     printf("All config reading tests passed!\n");
 }
 
+/*
+ * Validate HOME-based fallback path with a deliberately long HOME value.
+ * This protects against path buffer math regressions.
+ */
 static void test_long_home_path() {
     printf("Testing long HOME path config resolution...\n");
 
+<<<<<<< Updated upstream
     char base_dir[] = "/tmp/wall-c-home-test-XXXXXX";
     if (!mkdtemp(base_dir)) {
         perror("Failed to create temp directory");
         return;
     }
+=======
+    /* Build temporary directory root used as parent for long HOME. */
+    char base_dir[256];
+    create_temp_dir(base_dir, sizeof(base_dir), "/tmp/wall-c-home-test-");
+>>>>>>> Stashed changes
 
-    // Build a long HOME path under the temp directory
+    /* Generate a long directory segment to stress path construction. */
     char long_segment[128];
     memset(long_segment, 'a', sizeof(long_segment) - 1);
     long_segment[sizeof(long_segment) - 1] = '\0';
 
     char long_home[512];
     snprintf(long_home, sizeof(long_home), "%s/%s", base_dir, long_segment);
-    mkdir(long_home, 0755);
+    require_mkdir(long_home);
 
-    // Create ~/.config/wall-c/config under the long HOME path
+    /* Create ~/.config/wall-c/config structure beneath synthetic HOME. */
     char xdg_dir[512];
     snprintf(xdg_dir, sizeof(xdg_dir), "%s/.config", long_home);
-    mkdir(xdg_dir, 0755);
+    require_mkdir(xdg_dir);
 
     char config_dir[512];
     snprintf(config_dir, sizeof(config_dir), "%s/wall-c", xdg_dir);
-    mkdir(config_dir, 0755);
+    require_mkdir(config_dir);
 
     char config_path[512];
     snprintf(config_path, sizeof(config_path), "%s/config", config_dir);
 
-    FILE *f = fopen(config_path, "w");
-    fprintf(f, "AA:BB:CC:DD:EE:FF\n");
-    fclose(f);
+    write_config_line(config_path, "AA:BB:CC:DD:EE:FF");
 
+    /* Save current HOME so test does not leak environment mutations. */
     const char *old_home = getenv("HOME");
     char old_home_buf[512];
     if (old_home) {
@@ -153,28 +290,33 @@ static void test_long_home_path() {
         old_home_buf[sizeof(old_home_buf) - 1] = '\0';
     }
 
-    unsetenv("XDG_CONFIG_HOME");
-    setenv("HOME", long_home, 1);
+    /* Force fallback branch by unsetting XDG_CONFIG_HOME. */
+    require_unsetenv("XDG_CONFIG_HOME");
+    require_setenv("HOME", long_home, 1);
 
+    /* Verify that HOME fallback resolves and parses config correctly. */
     char *mac = read_mac_from_config();
     assert(mac != NULL);
     assert(strcmp(mac, "AA:BB:CC:DD:EE:FF") == 0);
     free(mac);
     printf("  ✓ Long HOME path config read\n");
 
+    /* Restore original HOME for subsequent tests or shell operations. */
     if (old_home) {
-        setenv("HOME", old_home_buf, 1);
+        require_setenv("HOME", old_home_buf, 1);
     } else {
-        unsetenv("HOME");
+        require_unsetenv("HOME");
     }
 
-    unlink(config_path);
-    rmdir(config_dir);
-    rmdir(xdg_dir);
-    rmdir(long_home);
-    rmdir(base_dir);
+    /* Remove all files/directories created by this test. */
+    require_unlink(config_path);
+    require_rmdir(config_dir);
+    require_rmdir(xdg_dir);
+    require_rmdir(long_home);
+    require_rmdir(base_dir);
 }
 
+/* Test runner entry point. */
 int main(void) {
     test_validation();
     test_config_read();
