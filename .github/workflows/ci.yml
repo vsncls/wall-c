@@ -43,6 +43,10 @@ jobs:
       - name: Build release target
         run: make release CC=${{ matrix.compiler }}
 
+      - name: Install zsh (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y zsh
+
       - name: Validate zsh completion script
         run: zsh -n completions/zsh/_wall-c
 
