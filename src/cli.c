@@ -4,8 +4,10 @@
 /* Print help text for CLI arguments. */
 void print_usage(const char *prog_name) {
     fprintf(stderr,
-            "Usage: %s [-m <mac_address>] [--target <name>] [-b <broadcast_ip>] "
-            "[-p <port>] [-y] [-h] [--version] [--dry-run] [--quiet]\n",
+            "Usage: %s [-m <mac_address>] [--target <name>] [--list-targets] "
+            "[-b <broadcast_ip>] [--interface <name>] [-p <port>] "
+            "[--count <n>] [--interval-ms <ms>] [--continue-on-error] "
+            "[-y] [-h] [--version] [--dry-run] [--quiet]\n",
             prog_name);
     fprintf(stderr, "  -m <mac_address>    : MAC address "
                     "(XX:XX:XX:XX:XX:XX, XX-XX-XX-XX-XX-XX, or XXXXXXXXXXXX)\n");

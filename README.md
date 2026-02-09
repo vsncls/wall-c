@@ -1,15 +1,17 @@
-# Wake-on-LAN Client (wall-c)
+# Wake-on-LAN Client (`wall-c`)
 
-A lightweight, cross-platform command-line tool for sending Wake-on-LAN (WoL) magic packets to wake up computers on your local network.
+A lightweight, cross-platform command-line tool for sending Wake-on-LAN (WoL) magic packets to wake up hosts on your local network.
 
 ## Features
 
-- Simple command-line interface with flag-based options
-- XDG Base Directory specification compliant configuration
-- Cross-platform support (macOS, Linux, and other Unix-like systems)
-- Comprehensive input validation
-- Built-in unit tests
-- Memory leak detection support
+- Short and long CLI flags (`-m` / `--mac`, `-b` / `--broadcast`, ...)
+- Multi-target config support with optional aliases
+- Target selection by name (`--target`) and discovery (`--list-targets`)
+- Batch send controls (`--count`, `--interval-ms`, `--continue-on-error`)
+- Interface-aware broadcast resolution (`--interface <ifname>`)
+- Script-friendly behavior (`--dry-run`, `--quiet`, `-y`)
+- Unit tests, CLI integration tests, sanitizer target, CI coverage on macOS/Linux
+- Built-in completion helpers for zsh and fish
 
 ## Building
 
@@ -17,179 +19,198 @@ A lightweight, cross-platform command-line tool for sending Wake-on-LAN (WoL) ma
 make
 ```
 
-This creates the executable at `build/wall-c`.
+This creates `build/wall-c`.
 
 ### Build Targets
 
-- `make` or `make all` - Build the executable
-- `make clean` - Remove build directory
+- `make` or `make all` - Build `build/wall-c`
+- `make clean` - Remove the build directory
 - `make test` - Build and run unit tests
-- `make test-integration` - Run CLI integration tests (exit codes / invalid args)
+- `make test-integration` - Run CLI integration tests
 - `make test-all` - Run unit + integration tests
-- `make sanitize` - Build and run tests with AddressSanitizer + UndefinedBehaviorSanitizer
-- `make release` - Build optimized release binary at `build/wall-c-release`
-- `make memcheck` - Build and run with memory leak detection (uses `leaks` on macOS, `valgrind` on Linux)
+- `make sanitize` - Run tests with ASan + UBSan
+- `make release` - Build optimized `build/wall-c-release`
+- `make memcheck` - Leak checks (`leaks` on macOS, `valgrind` on Linux)
+- `make install` - Install binary, man page, and completions
+- `make uninstall` - Remove installed files
 
-Equivalent Zig steps:
+Equivalent Zig targets:
 - `zig build test`
 - `zig build sanitize`
 - `zig build release`
 
+## Install
+
+Default install prefix is `/usr/local`.
+
+```bash
+make install
+```
+
+Custom prefix:
+
+```bash
+make install PREFIX=/opt/wall-c
+```
+
+Package-style staged install:
+
+```bash
+make install DESTDIR=/tmp/pkgroot
+```
+
+Uninstall:
+
+```bash
+make uninstall
+```
+
 ## Usage
 
 ```bash
-./build/wall-c [-m <mac_address>] [-b <broadcast_ip>] [-p <port>] [-y] [-h]
+./build/wall-c \
+  [-m <mac_address>] [--target <name>] [--list-targets] \
+  [-b <broadcast_ip>] [--interface <ifname>] [-p <port>] \
+  [--count <n>] [--interval-ms <ms>] [--continue-on-error] \
+  [--dry-run] [--quiet] [-y] [-h] [--version]
+```
+
+### Options
+
+- `-m`, `--mac <mac_address>` - Target MAC address
+- `--target <name>` - Send only one named target from config
+- `--list-targets` - Print parsed config targets and exit
+- `-b`, `--broadcast <broadcast_ip>` - Broadcast IPv4 address (default: `255.255.255.255`)
+- `--interface <ifname>` - Resolve broadcast IPv4 from interface (cannot be combined with `-b`)
+- `-p`, `--port <port>` - UDP destination port (default: `9`)
+- `--count <n>` - Send packet `n` times per target (default: `1`)
+- `--interval-ms <ms>` - Delay between repeated sends (default: `0`)
+- `--continue-on-error` - Continue processing later targets after a failure
+- `--dry-run` - Validate and print actions without sending packets
+- `--quiet` - Reduce non-error output
+- `-y`, `--yes` - Skip confirmation prompt
+- `-h`, `--help` - Show help
+- `--version` - Show version
+
+Default behavior prompts for confirmation before sending. For non-interactive usage (CI/scripts), pass `-y`.
+
+Target precedence:
+1. `-m` / `--mac`
+2. `--target`
+3. first non-empty, non-comment line from `stdin`
+4. all targets from config file
+
+### Examples
+
+Send one packet:
+
+```bash
+./build/wall-c -m AA:BB:CC:DD:EE:FF -y
+```
+
+Dry-run with repeats:
+
+```bash
+./build/wall-c --mac AA:BB:CC:DD:EE:FF --dry-run --count 3 --interval-ms 200 -y
+```
+
+Use interface-derived broadcast:
+
+```bash
+./build/wall-c --mac AA:BB:CC:DD:EE:FF --interface en0 -y
+```
+
+Send a named target from config:
+
+```bash
+./build/wall-c --target nas -y
+```
+
+Read one MAC from stdin:
+
+```bash
+echo "AA:BB:CC:DD:EE:FF" | ./build/wall-c -y
+```
+
+## Configuration
+
+Config path resolution:
+1. `$XDG_CONFIG_HOME/wall-c/config`
+2. `$HOME/.config/wall-c/config`
+
+Supported line formats:
+
+```text
+MAC [BROADCAST_IP] [PORT]
+NAME MAC [BROADCAST_IP] [PORT]
+```
+
+Blank lines and `#` comments are ignored.
+
+Example:
+
+```bash
+mkdir -p ~/.config/wall-c
+cat > ~/.config/wall-c/config <<'EOF'
+# unnamed target (uses defaults)
+AA:BB:CC:DD:EE:11
+
+# named targets
+nas AA:BB:CC:DD:EE:FF 192.168.1.255 9
+media 11:22:33:44:55:66
+EOF
 ```
 
 ## Shell Completions
 
-Completion helpers are included for:
-- `zsh`: `completions/zsh/_wall-c`
-- `fish`: `completions/fish/wall-c.fish`
+Included files:
+- zsh: `completions/zsh/_wall-c`
+- fish: `completions/fish/wall-c.fish`
 
-Install for current user:
+`make install` places completion files into:
+- `${PREFIX}/share/zsh/site-functions/_wall-c`
+- `${PREFIX}/share/fish/vendor_completions.d/wall-c.fish`
 
-zsh:
+Manual user-local install:
+
 ```bash
 mkdir -p ~/.zsh/completions
 cp completions/zsh/_wall-c ~/.zsh/completions/
 ```
 
-Then ensure your `.zshrc` includes:
-```bash
-fpath=(~/.zsh/completions $fpath)
-autoload -Uz compinit && compinit
-```
-
-fish:
 ```bash
 mkdir -p ~/.config/fish/completions
 cp completions/fish/wall-c.fish ~/.config/fish/completions/
 ```
 
-### Options
-
-- `-m <mac_address>` - Target MAC address (formats: `XX:XX:XX:XX:XX:XX`, `XX-XX-XX-XX-XX-XX`, or `XXXXXXXXXXXX`)
-- `-b <broadcast_ip>` - Broadcast IP address (default: `255.255.255.255`)
-- `-p <port>` - Port number (default: `9`)
-- `-y` - Skip confirmation prompt
-- `-h` - Display help message
-
-By default, the program will display the packet details and ask for confirmation before sending. Use `-y` to bypass this prompt (required for non-interactive scripting/CI).
-
-Target precedence when `-m` is not provided:
-1. First non-empty MAC line from `stdin`
-2. All MAC entries in config file (one per non-empty non-comment line)
-
-### Examples
-
-Send a WoL packet with command-line arguments:
-```bash
-./build/wall-c -m AA:BB:CC:DD:EE:FF -b 192.168.1.255 -p 9
-```
-
-Use default broadcast IP and port:
-```bash
-./build/wall-c -m AA:BB:CC:DD:EE:FF
-```
-
-Read a single MAC from stdin:
-```bash
-echo "AA:BB:CC:DD:EE:FF" | ./build/wall-c -y
-```
-
-Run validation tests:
-```bash
-make test
-# or
-./build/wall-c-test
-```
-
-### Exit Codes
-
-- `0` - Successful send, help shown (`-h`), or user cancelled at confirmation prompt
-- `1` - Validation/configuration/runtime failure (invalid args, missing MAC, non-interactive run without `-y`, socket send failure)
-
-### Automation Examples
-
-Non-interactive run with explicit MAC:
-```bash
-./build/wall-c -m AA:BB:CC:DD:EE:FF -b 192.168.1.255 -p 9 -y
-```
-
-Non-interactive run with config file MAC:
-```bash
-./build/wall-c -y
-```
-
-Simple script pattern:
-```bash
-#!/bin/sh
-set -eu
-
-if ./build/wall-c -m AA:BB:CC:DD:EE:FF -y; then
-  echo "wake packet sent"
-else
-  echo "wake packet failed" >&2
-  exit 1
-fi
-```
-
-## Configuration File
-
-Instead of specifying the MAC address on the command line, you can store one or more MAC addresses in a configuration file following the XDG Base Directory specification.
-
-### Location
-
-The configuration file is read from:
-1. `$XDG_CONFIG_HOME/wall-c/config` (if `XDG_CONFIG_HOME` is set)
-2. `~/.config/wall-c/config` (standard fallback)
-
-### Setup
-
-```bash
-mkdir -p ~/.config/wall-c
-cat > ~/.config/wall-c/config <<'EOF'
-AA:BB:CC:DD:EE:FF
-11:22:33:44:55:66
-# comment lines are ignored
-EOF
-```
-
-Then simply run:
-```bash
-./build/wall-c
-```
-
-The `-m` flag overrides stdin/config. If neither `-m` nor stdin is provided, all MAC entries from config are processed.
-
-## Technical Details
-
-- **Language**: C99
-- **Networking**: POSIX socket API (UDP broadcast)
-- **Magic Packet Format**: 6 bytes of 0xFF followed by the target MAC address repeated 16 times (102 bytes total)
-- **Dependencies**: Standard C library and POSIX APIs only
-
 ## Testing
 
-The project includes comprehensive unit tests covering:
-- MAC address validation (valid/invalid formats)
-- MAC normalization and parsing behavior
-- IP address validation
-- Port number validation
-- Magic packet byte layout
-- Configuration file reading with various edge cases
-
-CLI integration tests cover:
-- Exit codes for invalid argument combinations
-- Non-interactive confirmation behavior
-
-Run tests with memory leak detection:
 ```bash
+make test-all
+make sanitize
 make memcheck
 ```
 
-This uses the native `leaks` utility on macOS or `valgrind` on Linux.
+CI runs:
+- Ubuntu + macOS
+- `gcc` + `clang` build/test matrix
+- sanitizer jobs (clang) on Ubuntu + macOS
+- shell lint (`shellcheck`) for integration script
+
+## Release Artifacts
+
+A release workflow builds tagged releases (`v*`) for Linux and macOS, then uploads:
+- tarball artifacts containing binary + man page + completions
+- corresponding `.sha256` checksum files
+
+## Troubleshooting
+
+- Host does not wake:
+  Ensure BIOS/UEFI WoL is enabled and NIC power settings allow wake.
+- Different subnet:
+  WoL broadcasts often do not traverse routers by default. Use directed broadcast routing or run `wall-c` on the target LAN.
+- Non-interactive failures:
+  Use `-y` in scripts and CI.
 
 ## License
 

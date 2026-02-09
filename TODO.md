@@ -1,58 +1,35 @@
 ## TODO (`wall-c`)
 
-### Completed
-- [x] Apply extensive inline comments and documentation in `wall.h`, `main.c`, and `test.c`.
-- [x] Fix test build portability issue: replaced `mkdtemp` dependency in tests with portable temp-dir creation via `mkstemp` + `mkdir`.
-- [x] Replace `sprintf` with `snprintf` in config path building (`main.c`).
-- [x] Harden MAC parsing (`parse_mac`) by checking parse success for each byte.
-- [x] Add strict error handling for test setup file/dir operations (`test.c`).
-- [x] Define non-interactive behavior: require `-y` when stdin is not a TTY.
-- [x] Add tests for non-interactive confirmation policy helper.
-- [x] Extend MAC input support (lowercase, `-` separators, compact format) and normalize to canonical output.
-- [x] Add tests for accepted/rejected MAC normalization and parser behavior.
-- [x] Add GitHub Actions CI for `ubuntu-latest` and `macos-latest`.
-- [x] Build/test with both `gcc` and `clang`.
-- [x] Add sanitizer target (`-fsanitize=address,undefined`) and run it in CI.
-- [x] Add unit tests for `build_magic_packet` byte layout.
-- [x] Add CLI integration tests for exit codes and invalid argument combinations.
-- [x] Refactor `main.c` into modules: `config.c`, `validate.c`, `packet.c`, `net.c`, `cli.c`.
-- [x] Keep `main.c` as orchestration only.
-- [x] Align `Makefile` and `build.zig` targets (`test`, `release`, `sanitizer`).
-- [x] Update `README.md` with exit codes, non-interactive/script usage, and automation examples.
-- [x] Add a `LICENSE` file.
+### Completed (Recent)
 
-### Active Blocker
-- [x] No active blocker.
+- [x] CLI 2.0:
+- [x] Added long flags (`--mac`, `--broadcast`, `--port`, `--yes`, `--help`, `--version`).
+- [x] Added automation flags (`--dry-run`, `--quiet`).
+- [x] Added batch controls (`--count`, `--interval-ms`, `--continue-on-error`).
+- [x] Host targets:
+- [x] Added named config target format (`NAME MAC [BROADCAST_IP] [PORT]`).
+- [x] Added `--target <name>` and `--list-targets`.
+- [x] Network usability:
+- [x] Added `--interface <ifname>` broadcast resolution.
+- [x] Packaging:
+- [x] Added `make install` / `make uninstall`.
+- [x] Added man page at `man/wall-c.1`.
+- [x] Added zsh/fish completion delivery via install target.
+- [x] Testing/CI:
+- [x] Expanded unit + integration tests for new CLI/config behavior.
+- [x] Added sanitizer CI coverage on Ubuntu + macOS.
+- [x] Added shell lint job for `tests/integration_test.sh`.
+- [x] Docs:
+- [x] Updated `README.md` for new options, config format, install flow, and troubleshooting.
 
-### P0: Reliability (Do first)
-- [x] Replace `sprintf` with `snprintf` in config path building (`main.c`).
-- [x] Harden MAC parsing (`parse_mac`) by checking parse success for each byte.
-- [x] Add strict error handling for test setup file/dir operations (`test.c`).
-- [x] Define non-interactive behavior:
-- [x] If stdin is not a TTY, require `-y` with clear error.
-- [x] Add tests for chosen non-interactive behavior.
-- [x] Extend MAC input support (lowercase, `-` separators, optional compact format) and normalize output.
-- [x] Add tests for accepted and rejected MAC formats.
+### Next Candidates
 
-### P1: Testing + CI
-- [x] Add GitHub Actions CI for `ubuntu-latest` and `macos-latest`.
-- [x] Build/test with both `gcc` and `clang`.
-- [x] Add sanitizer target (`-fsanitize=address,undefined`) and run it in CI.
-- [x] Add unit tests for `build_magic_packet` byte layout.
-- [x] Add CLI integration tests for exit codes and invalid argument combinations.
-
-### P2: Maintainability
-- [x] Refactor `main.c` into modules: `config.c`, `validate.c`, `packet.c`, `net.c`, `cli.c`.
-- [x] Keep `main.c` as orchestration only.
-- [x] Align `Makefile` and `build.zig` targets (`test`, `release`, `sanitizer`).
-- [x] Update `README.md`:
-- [x] Document exit codes.
-- [x] Document non-interactive/script usage.
-- [x] Add automation examples.
-- [x] Add a `LICENSE` file.
+- [ ] Add interface-selection completion hints for fish from live interfaces.
+- [ ] Add optional JSON output mode for scripting.
+- [ ] Add `--timeout-ms` for send retry pacing in unstable environments.
 
 ### Done Criteria
-- [ ] CI green on macOS + Linux.
-- [ ] Sanitizer job has zero findings.
-- [ ] `make test` passes locally and in CI.
-- [x] CLI behavior and docs are consistent.
+
+- [ ] CI green on macOS + Linux after merge.
+- [ ] Sanitizer jobs remain zero findings.
+- [ ] Release workflow validated on first `v*` tag.

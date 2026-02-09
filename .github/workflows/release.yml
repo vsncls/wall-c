@@ -1,0 +1,56 @@
+name: Release Artifacts
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build-artifacts:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build release binary
+        run: make clean && make release CC=clang
+
+      - name: Package artifact and checksum
+        run: |
+          set -eu
+
+          case "${{ matrix.os }}" in
+            ubuntu-latest) os_id="linux" ;;
+            macos-latest) os_id="macos" ;;
+            *) os_id="unknown" ;;
+          esac
+
+          version="${GITHUB_REF_NAME:-dev}"
+          pkg_name="wall-c-${version}-${os_id}"
+          pkg_dir="dist/${pkg_name}"
+
+          mkdir -p "$pkg_dir/completions/zsh"
+          mkdir -p "$pkg_dir/completions/fish"
+
+          cp build/wall-c-release "$pkg_dir/wall-c"
+          cp man/wall-c.1 "$pkg_dir/wall-c.1"
+          cp completions/zsh/_wall-c "$pkg_dir/completions/zsh/_wall-c"
+          cp completions/fish/wall-c.fish "$pkg_dir/completions/fish/wall-c.fish"
+
+          tarball="dist/${pkg_name}.tar.gz"
+          tar -czf "$tarball" -C dist "$pkg_name"
+          shasum -a 256 "$tarball" > "${tarball}.sha256"
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wall-c-${{ matrix.os }}
+          path: |
+            dist/*.tar.gz
+            dist/*.tar.gz.sha256
