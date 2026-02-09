@@ -59,9 +59,17 @@ jobs:
       - name: Show compiler
         run: clang --version
 
-      - name: Run sanitizers
+      - name: Run sanitizers (Linux)
+        if: matrix.os == 'ubuntu-latest'
         env:
           ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1
+          UBSAN_OPTIONS: print_stacktrace=1
+        run: make clean && make sanitize CC=clang
+
+      - name: Run sanitizers (macOS)
+        if: matrix.os == 'macos-latest'
+        env:
+          ASAN_OPTIONS: detect_leaks=0:strict_string_checks=1
           UBSAN_OPTIONS: print_stacktrace=1
         run: make clean && make sanitize CC=clang
 
