@@ -15,6 +15,12 @@ VALGRIND = valgrind
 VALGRIND_FLAGS = --leak-check=full --show-leak-kinds=all --track-origins=yes --verbose
 LEAKS = leaks
 LEAKS_FLAGS = --atExit --
+PREFIX ?= /usr/local
+BINDIR ?= $(PREFIX)/bin
+MANDIR ?= $(PREFIX)/share/man
+ZSH_COMPLETION_DIR ?= $(PREFIX)/share/zsh/site-functions
+FISH_COMPLETION_DIR ?= $(PREFIX)/share/fish/vendor_completions.d
+INSTALL ?= install
 
 # Detect OS
 UNAME_S := $(shell uname -s)
@@ -90,4 +96,20 @@ endif
 valgrind: $(TEST_BIN)
 	$(VALGRIND) $(VALGRIND_FLAGS) ./$(TEST_BIN)
 
-.PHONY: all clean test test-integration test-all sanitize memcheck valgrind release
+install: wall-c
+	mkdir -p $(DESTDIR)$(BINDIR)
+	mkdir -p $(DESTDIR)$(MANDIR)/man1
+	mkdir -p $(DESTDIR)$(ZSH_COMPLETION_DIR)
+	mkdir -p $(DESTDIR)$(FISH_COMPLETION_DIR)
+	$(INSTALL) -m 0755 $(BUILD_DIR)/wall-c $(DESTDIR)$(BINDIR)/wall-c
+	$(INSTALL) -m 0644 man/wall-c.1 $(DESTDIR)$(MANDIR)/man1/wall-c.1
+	$(INSTALL) -m 0644 completions/zsh/_wall-c $(DESTDIR)$(ZSH_COMPLETION_DIR)/_wall-c
+	$(INSTALL) -m 0644 completions/fish/wall-c.fish $(DESTDIR)$(FISH_COMPLETION_DIR)/wall-c.fish
+
+uninstall:
+	rm -f $(DESTDIR)$(BINDIR)/wall-c
+	rm -f $(DESTDIR)$(MANDIR)/man1/wall-c.1
+	rm -f $(DESTDIR)$(ZSH_COMPLETION_DIR)/_wall-c
+	rm -f $(DESTDIR)$(FISH_COMPLETION_DIR)/wall-c.fish
+
+.PHONY: all clean test test-integration test-all sanitize memcheck valgrind release install uninstall

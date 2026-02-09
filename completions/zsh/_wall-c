@@ -2,29 +2,75 @@
 
 # zsh completion for wall-c
 #
-# Supports the current short options exposed by the CLI:
-#   -m <mac>, -b <broadcast_ip>, -p <port>, -y, -h
+# Supports short and long options.
+
+_wall_c_config_path() {
+  if [[ -n "$XDG_CONFIG_HOME" ]]; then
+    print -r -- "$XDG_CONFIG_HOME/wall-c/config"
+  else
+    print -r -- "$HOME/.config/wall-c/config"
+  fi
+}
 
 _wall_c_macs_from_config() {
   local cfg
-
-  if [[ -n "$XDG_CONFIG_HOME" ]]; then
-    cfg="$XDG_CONFIG_HOME/wall-c/config"
-  else
-    cfg="$HOME/.config/wall-c/config"
-  fi
+  cfg="$(_wall_c_config_path)"
 
   [[ -r "$cfg" ]] || return 0
 
-  # Offer non-empty, non-comment lines from config as MAC candidates.
-  _values 'configured macs' ${(f)"$(sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' "$cfg")"}
+  _values 'configured macs' ${(f)"$(awk '
+    {
+      sub(/[[:space:]]*#.*/, "", $0);
+      if ($0 ~ /^[[:space:]]*$/) next;
+      n = split($0, a, /[[:space:]]+/);
+      if (n == 0) next;
+      if (a[1] ~ /^([[:xdigit:]]{2}[:-]){5}[[:xdigit:]]{2}$/ || a[1] ~ /^[[:xdigit:]]{12}$/) {
+        print a[1];
+      } else if (n >= 2) {
+        print a[2];
+      } else {
+        print a[1];
+      }
+    }
+  ' "$cfg")"}
+}
+
+_wall_c_targets_from_config() {
+  local cfg
+  cfg="$(_wall_c_config_path)"
+
+  [[ -r "$cfg" ]] || return 0
+
+  _values 'configured targets' ${(f)"$(awk '
+    {
+      sub(/[[:space:]]*#.*/, "", $0);
+      if ($0 ~ /^[[:space:]]*$/) next;
+      n = split($0, a, /[[:space:]]+/);
+      if (n < 2) next;
+      if (a[1] ~ /^([[:xdigit:]]{2}[:-]){5}[[:xdigit:]]{2}$/ || a[1] ~ /^[[:xdigit:]]{12}$/) next;
+      print a[1];
+    }
+  ' "$cfg")"}
 }
 
 _wall_c() {
   _arguments -s \
     '-m[Target MAC address]:mac address:_wall_c_macs_from_config' \
+    '--mac[Target MAC address]:mac address:_wall_c_macs_from_config' \
+    '--target[Named config target]:target:_wall_c_targets_from_config' \
+    '--list-targets[List configured targets and exit]' \
     '-b[Broadcast IPv4 address]:broadcast ip:_guard "[0-9.]#" "IPv4 address"' \
+    '--broadcast[Broadcast IPv4 address]:broadcast ip:_guard "[0-9.]#" "IPv4 address"' \
+    '--interface[Resolve broadcast from interface]:interface:_net_interfaces' \
     '-p[Destination UDP port]:port:_guard "[0-9]#" "port (1-65535)"' \
+    '--port[Destination UDP port]:port:_guard "[0-9]#" "port (1-65535)"' \
+    '--count[Repeat sends per target]:count:_guard "[0-9]#" "repeat count"' \
+    '--interval-ms[Delay between repeats]:milliseconds:_guard "[0-9]#" "milliseconds"' \
+    '--dry-run[Validate and print without sending]' \
+    '--continue-on-error[Continue batch processing after failures]' \
+    '--quiet[Reduce normal output]' \
+    '--yes[Skip confirmation prompt]' \
+    '--version[Show version information]' \
     '-y[Skip confirmation prompt]' \
     '-h[Show help message]'
 }

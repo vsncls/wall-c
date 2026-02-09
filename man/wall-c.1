@@ -1,0 +1,97 @@
+.TH wall-c 1 "February 2026" "wall-c 0.3.0" "User Commands"
+.SH NAME
+wall-c \- send Wake-on-LAN magic packets
+.SH SYNOPSIS
+.B wall-c
+[\-m MAC]
+[\-\-target NAME]
+[\-b IP]
+[\-\-interface IFACE]
+[\-p PORT]
+[\-\-count N]
+[\-\-interval-ms MS]
+[\-\-dry-run]
+[\-\-continue-on-error]
+[\-\-quiet]
+[\-y]
+[\-h]
+[\-\-version]
+.SH DESCRIPTION
+\fBwall-c\fR sends Wake-on-LAN (WoL) magic packets over UDP broadcast.
+Targets can come from command line, stdin, or config file entries.
+.SH OPTIONS
+.TP
+.B \-m, \-\-mac MAC
+Target MAC address.
+Accepted forms: XX:XX:XX:XX:XX:XX, XX-XX-XX-XX-XX-XX, XXXXXXXXXXXX.
+.TP
+.B \-\-target NAME
+Select one named target from the config file.
+.TP
+.B \-\-list-targets
+Print parsed targets from config and exit.
+.TP
+.B \-b, \-\-broadcast IP
+Broadcast IPv4 address (default: 255.255.255.255).
+.TP
+.B \-\-interface IFACE
+Resolve broadcast IPv4 address from interface name (for example, en0).
+Cannot be combined with \-b/\-\-broadcast.
+.TP
+.B \-p, \-\-port PORT
+UDP destination port (default: 9).
+.TP
+.B \-\-count N
+Number of packets to send per target (default: 1).
+.TP
+.B \-\-interval-ms MS
+Delay in milliseconds between repeated sends (default: 0).
+.TP
+.B \-\-dry-run
+Validate inputs and print actions without sending packets.
+.TP
+.B \-\-continue-on-error
+Continue processing later targets after a failure in batch mode.
+.TP
+.B \-\-quiet
+Reduce non-error output.
+.TP
+.B \-y, \-\-yes
+Skip interactive confirmation prompt.
+.TP
+.B \-h, \-\-help
+Show help and exit.
+.TP
+.B \-\-version
+Show version and exit.
+.SH TARGET PRECEDENCE
+When no explicit source is given, target selection is:
+.IP "1." 3
+\-m/\-\-mac
+.IP "2." 3
+\-\-target
+.IP "3." 3
+First non-empty, non-comment line from stdin
+.IP "4." 3
+All targets from config file
+.SH CONFIG FILE
+Path resolution:
+.IP "1." 3
+$XDG_CONFIG_HOME/wall-c/config
+.IP "2." 3
+$HOME/.config/wall-c/config
+.PP
+Supported line formats:
+.IP "1." 3
+MAC [BROADCAST_IP] [PORT]
+.IP "2." 3
+NAME MAC [BROADCAST_IP] [PORT]
+.PP
+Blank lines and lines starting with '#' are ignored.
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+Validation, config, or send failure.
