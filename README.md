@@ -41,6 +41,32 @@ Equivalent Zig steps:
 ./build/wall-c [-m <mac_address>] [-b <broadcast_ip>] [-p <port>] [-y] [-h]
 ```
 
+## Shell Completions
+
+Completion helpers are included for:
+- `zsh`: `completions/zsh/_wall-c`
+- `fish`: `completions/fish/wall-c.fish`
+
+Install for current user:
+
+zsh:
+```bash
+mkdir -p ~/.zsh/completions
+cp completions/zsh/_wall-c ~/.zsh/completions/
+```
+
+Then ensure your `.zshrc` includes:
+```bash
+fpath=(~/.zsh/completions $fpath)
+autoload -Uz compinit && compinit
+```
+
+fish:
+```bash
+mkdir -p ~/.config/fish/completions
+cp completions/fish/wall-c.fish ~/.config/fish/completions/
+```
+
 ### Options
 
 - `-m <mac_address>` - Target MAC address (formats: `XX:XX:XX:XX:XX:XX`, `XX-XX-XX-XX-XX-XX`, or `XXXXXXXXXXXX`)
