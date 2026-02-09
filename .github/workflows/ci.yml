@@ -5,6 +5,20 @@ on:
   pull_request:
 
 jobs:
+  guard-injection-surface:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Block process-execution APIs in src
+        run: |
+          set -eu
+          if rg -n --pcre2 '\b(system|popen|execl|execle|execlp|execv|execve|execvp|execvpe|fork|vfork|posix_spawn|posix_spawnp)\s*\(' src; then
+            echo "Disallowed process-execution API found in src/" >&2
+            exit 1
+          fi
+
   build-and-test:
     runs-on: ${{ matrix.os }}
     strategy:
