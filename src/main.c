@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 /*
@@ -39,6 +40,22 @@ static int parse_bounded_int(const char *value, int min_value, int max_value,
 
     *out_value = (int)parsed;
     return 1;
+}
+
+static void sleep_ms(int interval_ms) {
+    struct timespec req;
+    struct timespec rem;
+
+    if (interval_ms <= 0) {
+        return;
+    }
+
+    req.tv_sec = interval_ms / 1000;
+    req.tv_nsec = (long)(interval_ms % 1000) * 1000000L;
+
+    while (nanosleep(&req, &rem) != 0 && errno == EINTR) {
+        req = rem;
+    }
 }
 
 static const wake_target_t *find_named_target(const target_list_t *list,
@@ -140,7 +157,7 @@ static int process_target(const char *raw_mac, const char *broadcast_ip, int por
         }
 
         if (attempt + 1 < repeat_count && interval_ms > 0) {
-            usleep((useconds_t)interval_ms * 1000U);
+            sleep_ms(interval_ms);
         }
     }
 
