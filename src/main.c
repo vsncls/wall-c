@@ -1,5 +1,7 @@
 #include "wall.h"
 #include <errno.h>
+#include <getopt.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,15 +16,39 @@
  *    - list from config file
  * 3) Normalize and validate inputs.
  * 4) Optionally prompt for confirmation.
- * 5) Build and send WoL magic packet(s).
+ * 5) Build and send WoL magic packet(s), optionally with repeat delay.
  */
 
+static int parse_bounded_int(const char *value, int min_value, int max_value,
+                             const char *label, int *out_value) {
+    char *endptr = NULL;
+    long parsed;
+
+    if (!value || !out_value) {
+        return 0;
+    }
+
+    errno = 0;
+    parsed = strtol(value, &endptr, 10);
+    if (errno != 0 || endptr == value || *endptr != '\0' ||
+        parsed < min_value || parsed > max_value) {
+        fprintf(stderr, "Invalid %s value '%s'. Use a value between %d and %d\n",
+                label, value, min_value, max_value);
+        return 0;
+    }
+
+    *out_value = (int)parsed;
+    return 1;
+}
+
 static int process_target(const char *raw_mac, const char *broadcast_ip, int port,
-                          int prompt_enabled, int *had_error,
+                          int prompt_enabled, int repeat_count, int interval_ms,
+                          int dry_run, int quiet, int *had_error,
                           int *sent_count) {
     char normalized_mac[18];
     unsigned char mac_bin[MAC_ADDR_LEN];
     unsigned char magic_packet[PACKET_LEN];
+    int attempt;
 
     if (!normalize_mac(raw_mac, normalized_mac, sizeof(normalized_mac))) {
         fprintf(stderr,
@@ -41,28 +67,50 @@ static int process_target(const char *raw_mac, const char *broadcast_ip, int por
     }
 
     if (prompt_enabled && !confirm_send(normalized_mac, broadcast_ip, port)) {
-        printf("Cancelled for %s.\n", normalized_mac);
+        if (!quiet) {
+            printf("Cancelled for %s.\n", normalized_mac);
+        }
         return 0;
     }
 
-    if (!parse_mac(normalized_mac, mac_bin)) {
-        fprintf(stderr, "Failed to parse normalized MAC address '%s'\n",
-                normalized_mac);
-        *had_error = 1;
-        return 0;
-    }
-    build_magic_packet(mac_bin, magic_packet);
+    for (attempt = 0; attempt < repeat_count; attempt++) {
+        if (dry_run) {
+            if (!quiet) {
+                printf("DRY RUN: would send to %s via %s:%d (attempt %d/%d)\n",
+                       normalized_mac, broadcast_ip, port, attempt + 1,
+                       repeat_count);
+            }
+            (*sent_count)++;
+        } else {
+            if (!parse_mac(normalized_mac, mac_bin)) {
+                fprintf(stderr, "Failed to parse normalized MAC address '%s'\n",
+                        normalized_mac);
+                *had_error = 1;
+                return 0;
+            }
+            build_magic_packet(mac_bin, magic_packet);
 
-    if (send_wol_packet(broadcast_ip, port, magic_packet, sizeof(magic_packet)) ==
-        0) {
-        printf("Magic packet sent to %s\n", normalized_mac);
-        (*sent_count)++;
-        return 1;
+            if (send_wol_packet(broadcast_ip, port, magic_packet,
+                                sizeof(magic_packet)) != 0) {
+                fprintf(stderr, "Failed to send magic packet to %s (attempt %d/%d)\n",
+                        normalized_mac, attempt + 1, repeat_count);
+                *had_error = 1;
+                return 0;
+            }
+
+            if (!quiet) {
+                printf("Magic packet sent to %s (attempt %d/%d)\n", normalized_mac,
+                       attempt + 1, repeat_count);
+            }
+            (*sent_count)++;
+        }
+
+        if (attempt + 1 < repeat_count && interval_ms > 0) {
+            usleep((useconds_t)interval_ms * 1000U);
+        }
     }
 
-    fprintf(stderr, "Failed to send magic packet to %s\n", normalized_mac);
-    *had_error = 1;
-    return 0;
+    return 1;
 }
 
 #ifndef WALL_TEST
@@ -76,11 +124,30 @@ int main(int argc, char *argv[]) {
     int stdin_is_tty = isatty(STDIN_FILENO);
     int had_error = 0;
     int sent_count = 0;
+    int dry_run = 0;
+    int quiet = 0;
+    int continue_on_error = 0;
+    int repeat_count = 1;
+    int interval_ms = 0;
     char stdin_mac[MAX_MAC_INPUT_LEN];
     mac_list_t config_list = {0};
     int config_count = 0;
+    const struct option long_options[] = {
+        {"mac", required_argument, NULL, 'm'},
+        {"broadcast", required_argument, NULL, 'b'},
+        {"port", required_argument, NULL, 'p'},
+        {"yes", no_argument, NULL, 'y'},
+        {"help", no_argument, NULL, 'h'},
+        {"version", no_argument, NULL, 1000},
+        {"dry-run", no_argument, NULL, 1001},
+        {"quiet", no_argument, NULL, 1002},
+        {"count", required_argument, NULL, 1003},
+        {"interval-ms", required_argument, NULL, 1004},
+        {"continue-on-error", no_argument, NULL, 1005},
+        {0, 0, 0, 0}};
 
-    while ((opt = getopt(argc, argv, "m:b:p:yh")) != -1) {
+    while ((opt = getopt_long(argc, argv, "m:b:p:yh", long_options, NULL)) !=
+           -1) {
         switch (opt) {
         case 'm':
             cli_mac = optarg;
@@ -88,21 +155,11 @@ int main(int argc, char *argv[]) {
         case 'b':
             broadcast_ip = optarg;
             break;
-        case 'p': {
-            char *endptr = NULL;
-            long parsed_port;
-            errno = 0;
-            parsed_port = strtol(optarg, &endptr, 10);
-            if (errno != 0 || endptr == optarg || *endptr != '\0' ||
-                parsed_port < 1 || parsed_port > 65535) {
-                fprintf(stderr,
-                        "Invalid port value '%s'. Use a port between 1 and 65535\n",
-                        optarg);
+        case 'p':
+            if (!parse_bounded_int(optarg, 1, 65535, "port", &port)) {
                 goto cleanup;
             }
-            port = (int)parsed_port;
             break;
-        }
         case 'y':
             skip_confirm = 1;
             break;
@@ -110,6 +167,30 @@ int main(int argc, char *argv[]) {
             print_usage(argv[0]);
             exit_code = EXIT_SUCCESS;
             goto cleanup;
+        case 1000:
+            print_version();
+            exit_code = EXIT_SUCCESS;
+            goto cleanup;
+        case 1001:
+            dry_run = 1;
+            break;
+        case 1002:
+            quiet = 1;
+            break;
+        case 1003:
+            if (!parse_bounded_int(optarg, 1, INT_MAX, "count", &repeat_count)) {
+                goto cleanup;
+            }
+            break;
+        case 1004:
+            if (!parse_bounded_int(optarg, 0, INT_MAX, "interval-ms",
+                                   &interval_ms)) {
+                goto cleanup;
+            }
+            break;
+        case 1005:
+            continue_on_error = 1;
+            break;
         default:
             print_usage(argv[0]);
             goto cleanup;
@@ -147,7 +228,8 @@ int main(int argc, char *argv[]) {
     if (cli_mac) {
         process_target(cli_mac, broadcast_ip, port,
                        should_prompt_for_confirmation(skip_confirm, stdin_is_tty),
-                       &had_error, &sent_count);
+                       repeat_count, interval_ms, dry_run, quiet, &had_error,
+                       &sent_count);
     } else {
         config_count = read_macs_from_config(&config_list);
         if (config_count < 0) {
@@ -162,9 +244,14 @@ int main(int argc, char *argv[]) {
         }
 
         for (int i = 0; i < config_count; i++) {
-            process_target(config_list.items[i], broadcast_ip, port,
-                           should_prompt_for_confirmation(skip_confirm, stdin_is_tty),
-                           &had_error, &sent_count);
+            int ok = process_target(
+                config_list.items[i], broadcast_ip, port,
+                should_prompt_for_confirmation(skip_confirm, stdin_is_tty),
+                repeat_count, interval_ms, dry_run, quiet, &had_error,
+                &sent_count);
+            if (!ok && !continue_on_error) {
+                break;
+            }
         }
     }
 

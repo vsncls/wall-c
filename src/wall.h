@@ -14,20 +14,40 @@
 #include <unistd.h>
 
 #define DEFAULT_PORT 9
+#define WALL_C_VERSION "0.3.0"
 #define MAC_ADDR_LEN 6
 #define PACKET_LEN 102
 #define MAX_MAC_INPUT_LEN 128
+#define MAX_CONFIG_LINE_LEN 512
 
 typedef struct {
     char **items;
     size_t count;
 } mac_list_t;
 
+typedef struct {
+    char *name;
+    char *mac;
+    char *broadcast_ip;
+    int port;
+} wake_target_t;
+
+typedef struct {
+    wake_target_t *items;
+    size_t count;
+} target_list_t;
+
 /* Read a MAC address from $XDG_CONFIG_HOME or $HOME/.config fallback. */
 char *read_mac_from_config(void);
 
 /* Read all MAC addresses from config file (one per non-empty non-comment line). */
 int read_macs_from_config(mac_list_t *list);
+
+/* Read all wake targets from config file. */
+int read_targets_from_config(target_list_t *list);
+
+/* Release heap allocations created by read_targets_from_config. */
+void free_target_list(target_list_t *list);
 
 /* Release heap allocations created by read_macs_from_config. */
 void free_mac_list(mac_list_t *list);
@@ -60,6 +80,9 @@ int should_prompt_for_confirmation(int skip_confirm, int stdin_is_tty);
 /* Print CLI usage text. */
 void print_usage(const char *prog_name);
 
+/* Print short version text. */
+void print_version(void);
+
 /* Interactive confirmation prompt. Returns 1 for yes, 0 otherwise. */
 int confirm_send(const char *mac, const char *broadcast_ip, int port);
 
@@ -72,6 +95,10 @@ void build_magic_packet(const unsigned char *mac, unsigned char *packet);
 /* Send packet over UDP broadcast. */
 int send_wol_packet(const char *broadcast_ip, int port,
                     const unsigned char *packet, size_t packet_len);
+
+/* Resolve interface broadcast IPv4 address into out_broadcast. */
+int resolve_interface_broadcast(const char *ifname, char *out_broadcast,
+                                size_t out_size);
 
 /* Unit test entry points. */
 void test_validation(void);

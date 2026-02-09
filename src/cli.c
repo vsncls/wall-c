@@ -5,7 +5,7 @@
 void print_usage(const char *prog_name) {
     fprintf(stderr,
             "Usage: %s [-m <mac_address>] [-b <broadcast_ip>] [-p <port>] "
-            "[-y] [-h]\n",
+            "[-y] [-h] [--version] [--dry-run] [--quiet]\n",
             prog_name);
     fprintf(stderr, "  -m <mac_address>    : MAC address "
                     "(XX:XX:XX:XX:XX:XX, XX-XX-XX-XX-XX-XX, or XXXXXXXXXXXX)\n");
@@ -15,6 +15,13 @@ void print_usage(const char *prog_name) {
     fprintf(stderr, "  -p <port>           : Port number (default: 9)\n");
     fprintf(stderr, "  -y                  : Skip confirmation prompt\n");
     fprintf(stderr, "  -h                  : Display this help message\n");
+    fprintf(stderr, "  --version           : Display version\n");
+    fprintf(stderr, "  --dry-run           : Validate and print actions without sending\n");
+    fprintf(stderr, "  --quiet             : Reduce normal output\n");
+    fprintf(stderr, "  --count <n>         : Send packet n times per target (default: 1)\n");
+    fprintf(stderr, "  --interval-ms <ms>  : Delay between repeat sends (default: 0)\n");
+    fprintf(stderr,
+            "  --continue-on-error : Keep processing later targets after failures\n");
     fprintf(stderr, "\nTarget precedence:\n");
     fprintf(stderr, "  1) -m <mac>\n");
     fprintf(stderr, "  2) first MAC from stdin\n");
@@ -22,6 +29,8 @@ void print_usage(const char *prog_name) {
     fprintf(stderr, "\nConfig file location: $XDG_CONFIG_HOME/wall-c/config "
                     "or ~/.config/wall-c/config\n");
 }
+
+void print_version(void) { printf("wall-c %s\n", WALL_C_VERSION); }
 
 /* Interactive send confirmation. Returns 1 for yes, 0 otherwise. */
 int confirm_send(const char *mac, const char *broadcast_ip, int port) {
