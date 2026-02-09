@@ -18,32 +18,35 @@ pub fn build(b: *std.Build) void {
     const c_flags = &[_][]const u8{
         "-std=c99",
         "-D_POSIX_C_SOURCE=200809L",
+        "-Isrc",
     };
     const test_flags = &[_][]const u8{
         "-std=c99",
         "-D_POSIX_C_SOURCE=200809L",
+        "-Isrc",
         "-DWALL_TEST",
     };
     const sanitize_test_flags = &[_][]const u8{
         "-std=c99",
         "-D_POSIX_C_SOURCE=200809L",
+        "-Isrc",
         "-DWALL_TEST",
     };
 
     const app_sources = &[_][]const u8{
-        "main.c",
-        "config.c",
-        "validate.c",
-        "packet.c",
-        "net.c",
-        "cli.c",
+        "src/main.c",
+        "src/config.c",
+        "src/validate.c",
+        "src/packet.c",
+        "src/net.c",
+        "src/cli.c",
     };
     const test_sources = &[_][]const u8{
         "test.c",
-        "config.c",
-        "validate.c",
-        "packet.c",
-        "net.c",
+        "src/config.c",
+        "src/validate.c",
+        "src/packet.c",
+        "src/net.c",
     };
 
     const exe = b.addExecutable(.{
