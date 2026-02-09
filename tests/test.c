@@ -310,6 +310,7 @@ void test_config_read() {
     /* Point config lookup at the temp tree via XDG_CONFIG_HOME override. */
     require_setenv("XDG_CONFIG_HOME", test_config_dir, 1);
     char *mac = read_mac_from_config();
+    int count = 0;
     assert(mac != NULL);
     assert(strcmp(mac, "AA:BB:CC:DD:EE:FF") == 0);
     free(mac);
@@ -325,43 +326,73 @@ void test_config_read() {
     print_success("  ✓ MAC with whitespace trimmed");
     
     /*
-     * Test 3: suspicious input should be read as plain text and then rejected
-     * by format validation. This verifies there is no shell evaluation path.
+     * Test 3: suspicious single-token input is treated as plain text and then
+     * rejected by MAC validation. This verifies there is no shell evaluation.
      */
-    const char *malicious_inputs[] = {
-        "AA:BB:CC:DD:EE:FF; echo pwned",
-        "$(whoami)",
-        "`id`",
-        "AA:BB:CC:DD:EE:FF && ls",
-        "| cat /etc/hosts",
-        NULL
-    };
-    for (int i = 0; malicious_inputs[i] != NULL; i++) {
-        write_config_line(test_config_path, malicious_inputs[i]);
-        
+    const char *suspicious_inputs[] = {"$(whoami)", "`id`", "|cat", NULL};
+    for (int i = 0; suspicious_inputs[i] != NULL; i++) {
+        write_config_line(test_config_path, suspicious_inputs[i]);
+
         mac = read_mac_from_config();
-        assert(mac != NULL); // File is read
+        assert(mac != NULL); // File is read as plain text
         assert(validate_mac(mac) == 0); // But validation rejects it
         free(mac);
     }
-    print_success("  ✓ Malicious config content rejected by validation");
+    print_success("  ✓ Suspicious config content rejected by validation");
 
-    /* Test 4: multi-host config list parsing with comments/blank lines. */
+    /*
+     * Test 3b: malformed structured lines should fail config parse cleanly.
+     * This protects against silently accepting ambiguous multi-token content.
+     */
+    write_config_line(test_config_path, "AA:BB:CC:DD:EE:FF; echo pwned");
+    {
+        target_list_t targets = {0};
+        count = read_targets_from_config(&targets);
+        assert(count == -1);
+        free_target_list(&targets);
+    }
+    print_success("  ✓ Malformed structured lines fail config parsing");
+
+    /* Test 4: multi-target config parsing with names/defaults/comments. */
     write_config_line(test_config_path, "# comment");
     {
         FILE *f = require_fopen(test_config_path, "a");
-        if (fprintf(f, "\nAA:BB:CC:DD:EE:FF\n  11:22:33:44:55:66  \n") < 0) {
+        if (fprintf(f,
+                    "\nnas AA:BB:CC:DD:EE:FF 192.168.1.255 7\n"
+                    "  11:22:33:44:55:66  \n"
+                    "media 22:33:44:55:66:77\n") < 0) {
             fail_with_errno("fprintf");
         }
         require_fclose(f);
     }
+    target_list_t targets = {0};
+    count = read_targets_from_config(&targets);
+    assert(count == 3);
+    assert(targets.items[0].name != NULL);
+    assert(strcmp(targets.items[0].name, "nas") == 0);
+    assert(strcmp(targets.items[0].mac, "AA:BB:CC:DD:EE:FF") == 0);
+    assert(strcmp(targets.items[0].broadcast_ip, "192.168.1.255") == 0);
+    assert(targets.items[0].port == 7);
+    assert(targets.items[1].name == NULL);
+    assert(strcmp(targets.items[1].mac, "11:22:33:44:55:66") == 0);
+    assert(strcmp(targets.items[1].broadcast_ip, "255.255.255.255") == 0);
+    assert(targets.items[1].port == 9);
+    assert(targets.items[2].name != NULL);
+    assert(strcmp(targets.items[2].name, "media") == 0);
+    assert(strcmp(targets.items[2].broadcast_ip, "255.255.255.255") == 0);
+    assert(targets.items[2].port == 9);
+    free_target_list(&targets);
+    print_success("  ✓ Named target config parsing works");
+
+    /* Backward-compatible read_macs_from_config still returns only MAC fields. */
     mac_list_t list = {0};
-    int count = read_macs_from_config(&list);
-    assert(count == 2);
+    count = read_macs_from_config(&list);
+    assert(count == 3);
     assert(strcmp(list.items[0], "AA:BB:CC:DD:EE:FF") == 0);
     assert(strcmp(list.items[1], "11:22:33:44:55:66") == 0);
+    assert(strcmp(list.items[2], "22:33:44:55:66:77") == 0);
     free_mac_list(&list);
-    print_success("  ✓ Multi-host config list parsed");
+    print_success("  ✓ MAC list compatibility preserved");
     
     /* Test 5: empty file has no first line and should return NULL. */
     write_empty_file(test_config_path);
