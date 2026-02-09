@@ -41,6 +41,40 @@ static int parse_bounded_int(const char *value, int min_value, int max_value,
     return 1;
 }
 
+static const wake_target_t *find_named_target(const target_list_t *list,
+                                              const char *target_name) {
+    if (!list || !target_name) {
+        return NULL;
+    }
+
+    for (size_t i = 0; i < list->count; i++) {
+        if (list->items[i].name &&
+            strcmp(list->items[i].name, target_name) == 0) {
+            return &list->items[i];
+        }
+    }
+
+    return NULL;
+}
+
+static void print_target_list(const target_list_t *list) {
+    if (!list || list->count == 0) {
+        printf("No configured targets found.\n");
+        return;
+    }
+
+    for (size_t i = 0; i < list->count; i++) {
+        const char *name = list->items[i].name;
+        if (name) {
+            printf("%s\t%s\t%s\t%d\n", name, list->items[i].mac,
+                   list->items[i].broadcast_ip, list->items[i].port);
+        } else {
+            printf("(unnamed-%zu)\t%s\t%s\t%d\n", i + 1, list->items[i].mac,
+                   list->items[i].broadcast_ip, list->items[i].port);
+        }
+    }
+}
+
 static int process_target(const char *raw_mac, const char *broadcast_ip, int port,
                           int prompt_enabled, int repeat_count, int interval_ms,
                           int dry_run, int quiet, int *had_error,
@@ -116,8 +150,12 @@ static int process_target(const char *raw_mac, const char *broadcast_ip, int por
 #ifndef WALL_TEST
 int main(int argc, char *argv[]) {
     const char *cli_mac = NULL;
+    const char *target_name = NULL;
     const char *broadcast_ip = "255.255.255.255";
     int port = DEFAULT_PORT;
+    int has_broadcast_override = 0;
+    int has_port_override = 0;
+    int list_targets = 0;
     int skip_confirm = 0;
     int opt;
     int exit_code = EXIT_FAILURE;
@@ -130,7 +168,8 @@ int main(int argc, char *argv[]) {
     int repeat_count = 1;
     int interval_ms = 0;
     char stdin_mac[MAX_MAC_INPUT_LEN];
-    mac_list_t config_list = {0};
+    target_list_t config_list = {0};
+    int stdin_has_mac = 0;
     int config_count = 0;
     const struct option long_options[] = {
         {"mac", required_argument, NULL, 'm'},
@@ -138,6 +177,8 @@ int main(int argc, char *argv[]) {
         {"port", required_argument, NULL, 'p'},
         {"yes", no_argument, NULL, 'y'},
         {"help", no_argument, NULL, 'h'},
+        {"target", required_argument, NULL, 1006},
+        {"list-targets", no_argument, NULL, 1007},
         {"version", no_argument, NULL, 1000},
         {"dry-run", no_argument, NULL, 1001},
         {"quiet", no_argument, NULL, 1002},
@@ -154,11 +195,13 @@ int main(int argc, char *argv[]) {
             break;
         case 'b':
             broadcast_ip = optarg;
+            has_broadcast_override = 1;
             break;
         case 'p':
             if (!parse_bounded_int(optarg, 1, 65535, "port", &port)) {
                 goto cleanup;
             }
+            has_port_override = 1;
             break;
         case 'y':
             skip_confirm = 1;
@@ -191,6 +234,12 @@ int main(int argc, char *argv[]) {
         case 1005:
             continue_on_error = 1;
             break;
+        case 1006:
+            target_name = optarg;
+            break;
+        case 1007:
+            list_targets = 1;
+            break;
         default:
             print_usage(argv[0]);
             goto cleanup;
@@ -208,20 +257,31 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
+    if (list_targets) {
+        config_count = read_targets_from_config(&config_list);
+        if (config_count < 0) {
+            fprintf(stderr, "Failed to parse config file\n");
+            goto cleanup;
+        }
+        print_target_list(&config_list);
+        exit_code = EXIT_SUCCESS;
+        goto cleanup;
+    }
+
     if (!skip_confirm && !stdin_is_tty) {
         fprintf(stderr,
                 "Non-interactive stdin detected. Use -y to skip confirmation.\n");
         goto cleanup;
     }
 
-    if (!cli_mac && !stdin_is_tty) {
+    if (!cli_mac && !target_name && !stdin_is_tty) {
         int stdin_result = read_mac_from_stdin(stdin_mac, sizeof(stdin_mac));
         if (stdin_result < 0) {
             fprintf(stderr, "Failed to read MAC address from stdin\n");
             goto cleanup;
         }
         if (stdin_result == 1) {
-            cli_mac = stdin_mac;
+            stdin_has_mac = 1;
         }
     }
 
@@ -230,10 +290,15 @@ int main(int argc, char *argv[]) {
                        should_prompt_for_confirmation(skip_confirm, stdin_is_tty),
                        repeat_count, interval_ms, dry_run, quiet, &had_error,
                        &sent_count);
+    } else if (stdin_has_mac) {
+        process_target(stdin_mac, broadcast_ip, port,
+                       should_prompt_for_confirmation(skip_confirm, stdin_is_tty),
+                       repeat_count, interval_ms, dry_run, quiet, &had_error,
+                       &sent_count);
     } else {
-        config_count = read_macs_from_config(&config_list);
+        config_count = read_targets_from_config(&config_list);
         if (config_count < 0) {
-            fprintf(stderr, "Failed to read config file\n");
+            fprintf(stderr, "Failed to parse config file\n");
             goto cleanup;
         }
         if (config_count == 0) {
@@ -243,14 +308,35 @@ int main(int argc, char *argv[]) {
             goto cleanup;
         }
 
-        for (int i = 0; i < config_count; i++) {
-            int ok = process_target(
-                config_list.items[i], broadcast_ip, port,
+        if (target_name) {
+            const wake_target_t *target =
+                find_named_target(&config_list, target_name);
+            if (!target) {
+                fprintf(stderr, "Target '%s' not found in config file\n",
+                        target_name);
+                goto cleanup;
+            }
+
+            process_target(
+                target->mac,
+                has_broadcast_override ? broadcast_ip : target->broadcast_ip,
+                has_port_override ? port : target->port,
                 should_prompt_for_confirmation(skip_confirm, stdin_is_tty),
                 repeat_count, interval_ms, dry_run, quiet, &had_error,
                 &sent_count);
-            if (!ok && !continue_on_error) {
-                break;
+        } else {
+            for (int i = 0; i < config_count; i++) {
+                int ok = process_target(
+                    config_list.items[i].mac,
+                    has_broadcast_override ? broadcast_ip
+                                           : config_list.items[i].broadcast_ip,
+                    has_port_override ? port : config_list.items[i].port,
+                    should_prompt_for_confirmation(skip_confirm, stdin_is_tty),
+                    repeat_count, interval_ms, dry_run, quiet, &had_error,
+                    &sent_count);
+                if (!ok && !continue_on_error) {
+                    break;
+                }
             }
         }
     }
@@ -262,7 +348,7 @@ int main(int argc, char *argv[]) {
     }
 
 cleanup:
-    free_mac_list(&config_list);
+    free_target_list(&config_list);
     return exit_code;
 }
 #endif

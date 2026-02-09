@@ -4,8 +4,8 @@
 /* Print help text for CLI arguments. */
 void print_usage(const char *prog_name) {
     fprintf(stderr,
-            "Usage: %s [-m <mac_address>] [-b <broadcast_ip>] [-p <port>] "
-            "[-y] [-h] [--version] [--dry-run] [--quiet]\n",
+            "Usage: %s [-m <mac_address>] [--target <name>] [-b <broadcast_ip>] "
+            "[-p <port>] [-y] [-h] [--version] [--dry-run] [--quiet]\n",
             prog_name);
     fprintf(stderr, "  -m <mac_address>    : MAC address "
                     "(XX:XX:XX:XX:XX:XX, XX-XX-XX-XX-XX-XX, or XXXXXXXXXXXX)\n");
@@ -16,6 +16,9 @@ void print_usage(const char *prog_name) {
     fprintf(stderr, "  -y                  : Skip confirmation prompt\n");
     fprintf(stderr, "  -h                  : Display this help message\n");
     fprintf(stderr, "  --version           : Display version\n");
+    fprintf(stderr, "  --target <name>     : Wake one named target from config\n");
+    fprintf(stderr,
+            "  --list-targets      : Print parsed targets from config and exit\n");
     fprintf(stderr, "  --dry-run           : Validate and print actions without sending\n");
     fprintf(stderr, "  --quiet             : Reduce normal output\n");
     fprintf(stderr, "  --count <n>         : Send packet n times per target (default: 1)\n");
@@ -24,8 +27,9 @@ void print_usage(const char *prog_name) {
             "  --continue-on-error : Keep processing later targets after failures\n");
     fprintf(stderr, "\nTarget precedence:\n");
     fprintf(stderr, "  1) -m <mac>\n");
-    fprintf(stderr, "  2) first MAC from stdin\n");
-    fprintf(stderr, "  3) all MACs in config file (one per line)\n");
+    fprintf(stderr, "  2) --target <name>\n");
+    fprintf(stderr, "  3) first MAC from stdin\n");
+    fprintf(stderr, "  4) all targets in config file\n");
     fprintf(stderr, "\nConfig file location: $XDG_CONFIG_HOME/wall-c/config "
                     "or ~/.config/wall-c/config\n");
 }
