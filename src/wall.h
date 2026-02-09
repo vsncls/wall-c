@@ -16,9 +16,24 @@
 #define DEFAULT_PORT 9
 #define MAC_ADDR_LEN 6
 #define PACKET_LEN 102
+#define MAX_MAC_INPUT_LEN 128
+
+typedef struct {
+    char **items;
+    size_t count;
+} mac_list_t;
 
 /* Read a MAC address from $XDG_CONFIG_HOME or $HOME/.config fallback. */
 char *read_mac_from_config(void);
+
+/* Read all MAC addresses from config file (one per non-empty non-comment line). */
+int read_macs_from_config(mac_list_t *list);
+
+/* Release heap allocations created by read_macs_from_config. */
+void free_mac_list(mac_list_t *list);
+
+/* Read one MAC address from stdin (first non-empty non-comment line). */
+int read_mac_from_stdin(char *mac_buf, size_t mac_buf_size);
 
 /* Validate canonical MAC form: XX:XX:XX:XX:XX:XX. */
 int validate_mac(const char *mac);

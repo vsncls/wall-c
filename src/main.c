@@ -2,35 +2,88 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 /*
  * Runtime overview:
- * 1) Read optional config MAC.
- * 2) Parse CLI arguments.
+ * 1) Parse CLI arguments.
+ * 2) Resolve target MACs by precedence:
+ *    - explicit -m
+ *    - one MAC from stdin
+ *    - list from config file
  * 3) Normalize and validate inputs.
  * 4) Optionally prompt for confirmation.
- * 5) Build and send WoL magic packet.
+ * 5) Build and send WoL magic packet(s).
  */
 
-#ifndef WALL_TEST
-int main(int argc, char *argv[]) {
-    char *config_mac = read_mac_from_config();
-    const char *mac_str = config_mac;
-    const char *broadcast_ip = "255.255.255.255";
-    int port = DEFAULT_PORT;
-    int skip_confirm = 0;
-    int exit_code = EXIT_FAILURE;
-    int opt;
-    int stdin_is_tty = isatty(STDIN_FILENO);
+static int process_target(const char *raw_mac, const char *broadcast_ip, int port,
+                          int prompt_enabled, int *had_error,
+                          int *sent_count) {
     char normalized_mac[18];
     unsigned char mac_bin[MAC_ADDR_LEN];
     unsigned char magic_packet[PACKET_LEN];
 
+    if (!normalize_mac(raw_mac, normalized_mac, sizeof(normalized_mac))) {
+        fprintf(stderr,
+                "Invalid MAC address format '%s'. Use XX:XX:XX:XX:XX:XX, "
+                "XX-XX-XX-XX-XX-XX, or XXXXXXXXXXXX\n",
+                raw_mac);
+        *had_error = 1;
+        return 0;
+    }
+
+    if (!validate_mac(normalized_mac)) {
+        fprintf(stderr, "Invalid normalized MAC address format '%s'\n",
+                normalized_mac);
+        *had_error = 1;
+        return 0;
+    }
+
+    if (prompt_enabled && !confirm_send(normalized_mac, broadcast_ip, port)) {
+        printf("Cancelled for %s.\n", normalized_mac);
+        return 0;
+    }
+
+    if (!parse_mac(normalized_mac, mac_bin)) {
+        fprintf(stderr, "Failed to parse normalized MAC address '%s'\n",
+                normalized_mac);
+        *had_error = 1;
+        return 0;
+    }
+    build_magic_packet(mac_bin, magic_packet);
+
+    if (send_wol_packet(broadcast_ip, port, magic_packet, sizeof(magic_packet)) ==
+        0) {
+        printf("Magic packet sent to %s\n", normalized_mac);
+        (*sent_count)++;
+        return 1;
+    }
+
+    fprintf(stderr, "Failed to send magic packet to %s\n", normalized_mac);
+    *had_error = 1;
+    return 0;
+}
+
+#ifndef WALL_TEST
+int main(int argc, char *argv[]) {
+    const char *cli_mac = NULL;
+    const char *broadcast_ip = "255.255.255.255";
+    int port = DEFAULT_PORT;
+    int skip_confirm = 0;
+    int opt;
+    int exit_code = EXIT_FAILURE;
+    int stdin_is_tty = isatty(STDIN_FILENO);
+    int had_error = 0;
+    int sent_count = 0;
+    char stdin_mac[MAX_MAC_INPUT_LEN];
+    mac_list_t config_list = {0};
+    int config_count = 0;
+
     while ((opt = getopt(argc, argv, "m:b:p:yh")) != -1) {
         switch (opt) {
         case 'm':
-            mac_str = optarg;
+            cli_mac = optarg;
             break;
         case 'b':
             broadcast_ip = optarg;
@@ -63,26 +116,6 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    if (!mac_str) {
-        fprintf(stderr,
-                "Error: No MAC address provided. Use -m option or configure in "
-                "~/.config/wall-c/config\n");
-        goto cleanup;
-    }
-
-    if (!normalize_mac(mac_str, normalized_mac, sizeof(normalized_mac))) {
-        fprintf(stderr,
-                "Invalid MAC address format. Use XX:XX:XX:XX:XX:XX, "
-                "XX-XX-XX-XX-XX-XX, or XXXXXXXXXXXX\n");
-        goto cleanup;
-    }
-    mac_str = normalized_mac;
-
-    if (!validate_mac(mac_str)) {
-        fprintf(stderr, "Invalid normalized MAC address format\n");
-        goto cleanup;
-    }
-
     if (!validate_ip(broadcast_ip)) {
         fprintf(stderr,
                 "Invalid IP address format. Use IPv4 format (e.g., 192.168.1.255)\n");
@@ -100,29 +133,49 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    if (should_prompt_for_confirmation(skip_confirm, stdin_is_tty) &&
-        !confirm_send(mac_str, broadcast_ip, port)) {
-        printf("Cancelled.\n");
-        exit_code = EXIT_SUCCESS;
-        goto cleanup;
+    if (!cli_mac && !stdin_is_tty) {
+        int stdin_result = read_mac_from_stdin(stdin_mac, sizeof(stdin_mac));
+        if (stdin_result < 0) {
+            fprintf(stderr, "Failed to read MAC address from stdin\n");
+            goto cleanup;
+        }
+        if (stdin_result == 1) {
+            cli_mac = stdin_mac;
+        }
     }
 
-    if (!parse_mac(mac_str, mac_bin)) {
-        fprintf(stderr, "Failed to parse normalized MAC address\n");
-        goto cleanup;
-    }
-    build_magic_packet(mac_bin, magic_packet);
-
-    if (send_wol_packet(broadcast_ip, port, magic_packet,
-                        sizeof(magic_packet)) == 0) {
-        printf("Magic packet sent to %s\n", mac_str);
-        exit_code = EXIT_SUCCESS;
+    if (cli_mac) {
+        process_target(cli_mac, broadcast_ip, port,
+                       should_prompt_for_confirmation(skip_confirm, stdin_is_tty),
+                       &had_error, &sent_count);
     } else {
-        fprintf(stderr, "Failed to send magic packet\n");
+        config_count = read_macs_from_config(&config_list);
+        if (config_count < 0) {
+            fprintf(stderr, "Failed to read config file\n");
+            goto cleanup;
+        }
+        if (config_count == 0) {
+            fprintf(stderr,
+                    "Error: No MAC address provided. Use -m, stdin, or configure "
+                    "one or more entries in ~/.config/wall-c/config\n");
+            goto cleanup;
+        }
+
+        for (int i = 0; i < config_count; i++) {
+            process_target(config_list.items[i], broadcast_ip, port,
+                           should_prompt_for_confirmation(skip_confirm, stdin_is_tty),
+                           &had_error, &sent_count);
+        }
+    }
+
+    if (had_error) {
+        exit_code = EXIT_FAILURE;
+    } else {
+        exit_code = EXIT_SUCCESS;
     }
 
 cleanup:
-    free(config_mac);
+    free_mac_list(&config_list);
     return exit_code;
 }
 #endif

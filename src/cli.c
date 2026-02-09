@@ -15,6 +15,10 @@ void print_usage(const char *prog_name) {
     fprintf(stderr, "  -p <port>           : Port number (default: 9)\n");
     fprintf(stderr, "  -y                  : Skip confirmation prompt\n");
     fprintf(stderr, "  -h                  : Display this help message\n");
+    fprintf(stderr, "\nTarget precedence:\n");
+    fprintf(stderr, "  1) -m <mac>\n");
+    fprintf(stderr, "  2) first MAC from stdin\n");
+    fprintf(stderr, "  3) all MACs in config file (one per line)\n");
     fprintf(stderr, "\nConfig file location: $XDG_CONFIG_HOME/wall-c/config "
                     "or ~/.config/wall-c/config\n");
 }

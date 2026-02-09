@@ -51,6 +51,10 @@ Equivalent Zig steps:
 
 By default, the program will display the packet details and ask for confirmation before sending. Use `-y` to bypass this prompt (required for non-interactive scripting/CI).
 
+Target precedence when `-m` is not provided:
+1. First non-empty MAC line from `stdin`
+2. All MAC entries in config file (one per non-empty non-comment line)
+
 ### Examples
 
 Send a WoL packet with command-line arguments:
@@ -61,6 +65,11 @@ Send a WoL packet with command-line arguments:
 Use default broadcast IP and port:
 ```bash
 ./build/wall-c -m AA:BB:CC:DD:EE:FF
+```
+
+Read a single MAC from stdin:
+```bash
+echo "AA:BB:CC:DD:EE:FF" | ./build/wall-c -y
 ```
 
 Run validation tests:
@@ -102,7 +111,7 @@ fi
 
 ## Configuration File
 
-Instead of specifying the MAC address on the command line, you can store it in a configuration file following the XDG Base Directory specification.
+Instead of specifying the MAC address on the command line, you can store one or more MAC addresses in a configuration file following the XDG Base Directory specification.
 
 ### Location
 
@@ -114,7 +123,11 @@ The configuration file is read from:
 
 ```bash
 mkdir -p ~/.config/wall-c
-echo "AA:BB:CC:DD:EE:FF" > ~/.config/wall-c/config
+cat > ~/.config/wall-c/config <<'EOF'
+AA:BB:CC:DD:EE:FF
+11:22:33:44:55:66
+# comment lines are ignored
+EOF
 ```
 
 Then simply run:
@@ -122,7 +135,7 @@ Then simply run:
 ./build/wall-c
 ```
 
-The `-m` flag will override the MAC address from the config file if both are provided.
+The `-m` flag overrides stdin/config. If neither `-m` nor stdin is provided, all MAC entries from config are processed.
 
 ## Technical Details
 

@@ -4,13 +4,13 @@ BUILD_DIR = build
 SRC_DIR = src
 SRC_CORE = $(SRC_DIR)/config.c $(SRC_DIR)/validate.c $(SRC_DIR)/packet.c $(SRC_DIR)/net.c $(SRC_DIR)/cli.c
 APP_SRCS = $(SRC_DIR)/main.c $(SRC_CORE)
-TEST_SRCS = test.c $(SRC_DIR)/config.c $(SRC_DIR)/validate.c $(SRC_DIR)/packet.c $(SRC_DIR)/net.c
+TEST_SRCS = tests/test.c $(SRC_DIR)/config.c $(SRC_DIR)/validate.c $(SRC_DIR)/packet.c $(SRC_DIR)/net.c
 TEST_BIN = $(BUILD_DIR)/wall-c-test
 SAN_TEST_BIN = $(BUILD_DIR)/wall-c-test-sanitize
 RELEASE_BIN = $(BUILD_DIR)/wall-c-release
 RELEASE_CFLAGS = -O2 -DNDEBUG
 SANITIZE_FLAGS = -fsanitize=address,undefined -fno-omit-frame-pointer
-INTEGRATION_TEST = sh ./scripts/integration_test.sh
+INTEGRATION_TEST = sh ./tests/integration_test.sh
 VALGRIND = valgrind
 VALGRIND_FLAGS = --leak-check=full --show-leak-kinds=all --track-origins=yes --verbose
 LEAKS = leaks

@@ -42,7 +42,7 @@ pub fn build(b: *std.Build) void {
         "src/cli.c",
     };
     const test_sources = &[_][]const u8{
-        "test.c",
+        "tests/test.c",
         "src/config.c",
         "src/validate.c",
         "src/packet.c",

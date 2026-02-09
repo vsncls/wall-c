@@ -12,8 +12,36 @@
  * Networking is intentionally not exercised here to keep tests deterministic.
  */
 
+static const char *C_RESET = "";
+static const char *C_GREEN = "";
+static const char *C_RED = "";
+static const char *C_BLUE = "";
+
+static void init_colors(void) {
+    if (isatty(STDOUT_FILENO) && getenv("NO_COLOR") == NULL) {
+        C_RESET = "\x1b[0m";
+        C_GREEN = "\x1b[32m";
+        C_RED = "\x1b[31m";
+        C_BLUE = "\x1b[34m";
+    }
+}
+
+static void print_section(const char *msg) {
+    printf("%s%s%s\n", C_BLUE, msg, C_RESET);
+}
+
+static void print_success(const char *msg) {
+    printf("%s%s%s\n", C_GREEN, msg, C_RESET);
+}
+
 static void fail_with_errno(const char *context) {
+    if (C_RED[0] != '\0') {
+        fprintf(stderr, "%s", C_RED);
+    }
     perror(context);
+    if (C_RESET[0] != '\0') {
+        fprintf(stderr, "%s", C_RESET);
+    }
     exit(EXIT_FAILURE);
 }
 
@@ -140,6 +168,44 @@ static void require_rmdir(const char *path) {
     }
 }
 
+static int require_dup(int fd) {
+    int dup_fd = dup(fd);
+    if (dup_fd < 0) {
+        fail_with_errno("dup");
+    }
+    return dup_fd;
+}
+
+static void require_dup2(int oldfd, int newfd) {
+    if (dup2(oldfd, newfd) < 0) {
+        fail_with_errno("dup2");
+    }
+}
+
+static void require_pipe(int fds[2]) {
+    if (pipe(fds) != 0) {
+        fail_with_errno("pipe");
+    }
+}
+
+static void require_close(int fd) {
+    if (close(fd) != 0) {
+        fail_with_errno("close");
+    }
+}
+
+static void require_write_all(int fd, const char *data) {
+    size_t total = strlen(data);
+    size_t written = 0;
+    while (written < total) {
+        ssize_t rc = write(fd, data + written, total - written);
+        if (rc < 0) {
+            fail_with_errno("write");
+        }
+        written += (size_t)rc;
+    }
+}
+
 /*
  * Verify packet structure exactly matches WoL spec:
  * - bytes [0..5] are 0xFF
@@ -149,7 +215,7 @@ static void test_magic_packet_layout(void) {
     unsigned char mac[MAC_ADDR_LEN] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
     unsigned char packet[PACKET_LEN];
 
-    printf("Testing magic packet byte layout...\n");
+    print_section("Testing magic packet byte layout...");
     build_magic_packet(mac, packet);
 
     for (int i = 0; i < 6; i++) {
@@ -163,12 +229,12 @@ static void test_magic_packet_layout(void) {
         }
     }
 
-    printf("Magic packet layout test passed!\n");
+    print_success("Magic packet layout test passed!");
 }
 
 /* Validate format-checking helpers with representative valid/invalid inputs. */
 void test_validation() {
-    printf("Testing validation functions...\n");
+    print_section("Testing validation functions...");
 
     /* Canonical MAC format acceptance and rejection cases. */
     assert(validate_mac("AA:BB:CC:DD:EE:FF") == 1);
@@ -219,7 +285,7 @@ void test_validation() {
     assert(should_prompt_for_confirmation(1, 1) == 0);
     assert(should_prompt_for_confirmation(0, 0) == 0);
     assert(should_prompt_for_confirmation(1, 0) == 0);
-    printf("All validation tests passed!\n");
+    print_success("All validation tests passed!");
 }
 
 /*
@@ -227,7 +293,7 @@ void test_validation() {
  * The test creates isolated temporary files to avoid mutating user config.
  */
 void test_config_read() {
-    printf("Testing config file reading...\n");
+    print_section("Testing config file reading...");
     
     /* Create isolated temp directory root, then wall-c/config beneath it. */
     char test_config_dir[256];
@@ -247,7 +313,7 @@ void test_config_read() {
     assert(mac != NULL);
     assert(strcmp(mac, "AA:BB:CC:DD:EE:FF") == 0);
     free(mac);
-    printf("  ✓ Valid MAC from config file\n");
+    print_success("  ✓ Valid MAC from config file");
     
     /* Test 2: leading/trailing whitespace should be trimmed in-place. */
     write_config_line(test_config_path, "  11:22:33:44:55:66  ");
@@ -256,7 +322,7 @@ void test_config_read() {
     assert(mac != NULL);
     assert(strcmp(mac, "11:22:33:44:55:66") == 0);
     free(mac);
-    printf("  ✓ MAC with whitespace trimmed\n");
+    print_success("  ✓ MAC with whitespace trimmed");
     
     /*
      * Test 3: suspicious input should be read as plain text and then rejected
@@ -278,20 +344,42 @@ void test_config_read() {
         assert(validate_mac(mac) == 0); // But validation rejects it
         free(mac);
     }
-    printf("  ✓ Malicious config content rejected by validation\n");
+    print_success("  ✓ Malicious config content rejected by validation");
+
+    /* Test 4: multi-host config list parsing with comments/blank lines. */
+    write_config_line(test_config_path, "# comment");
+    {
+        FILE *f = require_fopen(test_config_path, "a");
+        if (fprintf(f, "\nAA:BB:CC:DD:EE:FF\n  11:22:33:44:55:66  \n") < 0) {
+            fail_with_errno("fprintf");
+        }
+        require_fclose(f);
+    }
+    mac_list_t list = {0};
+    int count = read_macs_from_config(&list);
+    assert(count == 2);
+    assert(strcmp(list.items[0], "AA:BB:CC:DD:EE:FF") == 0);
+    assert(strcmp(list.items[1], "11:22:33:44:55:66") == 0);
+    free_mac_list(&list);
+    print_success("  ✓ Multi-host config list parsed");
     
-    /* Test 4: empty file has no first line and should return NULL. */
+    /* Test 5: empty file has no first line and should return NULL. */
     write_empty_file(test_config_path);
     
     mac = read_mac_from_config();
     assert(mac == NULL);
-    printf("  ✓ Empty config file returns NULL\n");
+    print_success("  ✓ Empty config file returns NULL");
     
-    /* Test 5: missing file should also return NULL, not hard-fail. */
+    /* Test 6: missing file should also return NULL, not hard-fail. */
     require_unlink(test_config_path);
     mac = read_mac_from_config();
     assert(mac == NULL);
-    printf("  ✓ Missing config file returns NULL\n");
+    list.items = NULL;
+    list.count = 0;
+    count = read_macs_from_config(&list);
+    assert(count == 0);
+    free_mac_list(&list);
+    print_success("  ✓ Missing config file returns NULL");
     
     /* Cleanup temp directories and restore process environment. */
     require_rmdir(test_config_file);
@@ -300,7 +388,32 @@ void test_config_read() {
     free(test_config_path);
     free(test_config_file);
     
-    printf("All config reading tests passed!\n");
+    print_success("All config reading tests passed!");
+}
+
+static void test_stdin_read() {
+    int old_stdin;
+    int fds[2];
+    char mac[MAX_MAC_INPUT_LEN];
+    int rc;
+
+    print_section("Testing stdin MAC reading...");
+
+    old_stdin = require_dup(STDIN_FILENO);
+    require_pipe(fds);
+    require_write_all(fds[1],
+                      "\n# ignored comment\naa-bb-cc-dd-ee-ff\n11:22:33:44:55:66\n");
+    require_close(fds[1]);
+    require_dup2(fds[0], STDIN_FILENO);
+    require_close(fds[0]);
+
+    rc = read_mac_from_stdin(mac, sizeof(mac));
+    assert(rc == 1);
+    assert(strcmp(mac, "aa-bb-cc-dd-ee-ff") == 0);
+    print_success("  ✓ First non-empty stdin MAC is consumed");
+
+    require_dup2(old_stdin, STDIN_FILENO);
+    require_close(old_stdin);
 }
 
 /*
@@ -308,7 +421,7 @@ void test_config_read() {
  * This protects against path buffer math regressions.
  */
 static void test_long_home_path() {
-    printf("Testing long HOME path config resolution...\n");
+    print_section("Testing long HOME path config resolution...");
 
     /* Build temporary directory root used as parent for long HOME. */
     char base_dir[256];
@@ -350,7 +463,7 @@ static void test_long_home_path() {
     assert(mac != NULL);
     assert(strcmp(mac, "AA:BB:CC:DD:EE:FF") == 0);
     free(mac);
-    printf("  ✓ Long HOME path config read\n");
+    print_success("  ✓ Long HOME path config read");
 
     /* Restore original HOME for subsequent tests or shell operations. */
     if (old_home) {
@@ -373,9 +486,11 @@ static void test_long_home_path() {
 
 /* Test runner entry point. */
 int main(void) {
+    init_colors();
     test_validation();
     test_magic_packet_layout();
     test_config_read();
+    test_stdin_read();
     test_long_home_path();
     return 0;
 }
