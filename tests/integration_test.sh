@@ -57,6 +57,7 @@ run_case 1 "invalid non-numeric port exits with failure" "$BIN_PATH" -m "AA:BB:C
 run_case 1 "out-of-range port exits with failure" "$BIN_PATH" -m "AA:BB:CC:DD:EE:FF" -p "70000" -y
 run_case 1 "invalid count exits with failure" "$BIN_PATH" --mac "AA:BB:CC:DD:EE:FF" --count 0 -y
 run_case 1 "invalid interval exits with failure" "$BIN_PATH" --mac "AA:BB:CC:DD:EE:FF" --interval-ms -1 -y
+# shellcheck disable=SC2016
 run_case 1 "non-interactive stdin requires -y" \
     sh -c '"$1" -m "AA:BB:CC:DD:EE:FF" < /dev/null' _ "$BIN_PATH"
 run_case 1 "compact MAC accepted then invalid IP still fails on IP" "$BIN_PATH" -m "aabbccddeeff" -b "300.1.1.1" -y
@@ -70,6 +71,7 @@ printf "nas AA:BB:CC:DD:EE:FF 192.168.1.255 9\nAA:BB:CC:DD:EE:11\n" > "$XDG_CONF
 run_case 0 "list-targets exits successfully" "$BIN_PATH" --list-targets
 run_case 0 "named target dry-run succeeds" "$BIN_PATH" --target "nas" --dry-run -y
 run_case 1 "missing named target exits with failure" "$BIN_PATH" --target "does-not-exist" -y
+# shellcheck disable=SC2016
 run_case 1 "stdin MAC takes precedence over config when stdin MAC is invalid" \
     sh -c 'printf "not-a-mac\n" | "$1" -y' _ "$BIN_PATH"
 

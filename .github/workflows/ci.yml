@@ -29,8 +29,15 @@ jobs:
       - name: Build release target
         run: make release CC=${{ matrix.compiler }}
 
+      - name: Validate zsh completion script
+        run: zsh -n completions/zsh/_wall-c
+
   sanitizer:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,3 +50,16 @@ jobs:
           ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1
           UBSAN_OPTIONS: print_stacktrace=1
         run: make clean && make sanitize CC=clang
+
+  lint-shell:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Lint shell scripts
+        run: |
+          shellcheck tests/integration_test.sh
