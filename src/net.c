@@ -1,4 +1,6 @@
 #include "wall.h"
+#include <ifaddrs.h>
+#include <net/if.h>
 
 int send_wol_packet(const char *broadcast_ip, int port,
                     const unsigned char *packet, size_t packet_len) {
@@ -37,4 +39,46 @@ int send_wol_packet(const char *broadcast_ip, int port,
 
     close(sock);
     return 0;
+}
+
+int resolve_interface_broadcast(const char *ifname, char *out_broadcast,
+                                size_t out_size) {
+    struct ifaddrs *ifaddr = NULL;
+    struct ifaddrs *ifa = NULL;
+    int found = 0;
+
+    if (!ifname || !out_broadcast || out_size == 0) {
+        return -1;
+    }
+
+    if (getifaddrs(&ifaddr) != 0) {
+        perror("getifaddrs failed");
+        return -1;
+    }
+
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        struct sockaddr_in *bcast_addr = NULL;
+
+        if (!ifa->ifa_name || strcmp(ifa->ifa_name, ifname) != 0) {
+            continue;
+        }
+        if (!ifa->ifa_broadaddr) {
+            continue;
+        }
+        if (ifa->ifa_broadaddr->sa_family != AF_INET) {
+            continue;
+        }
+
+        bcast_addr = (struct sockaddr_in *)ifa->ifa_broadaddr;
+        if (!inet_ntop(AF_INET, &bcast_addr->sin_addr, out_broadcast,
+                       out_size)) {
+            continue;
+        }
+
+        found = 1;
+        break;
+    }
+
+    freeifaddrs(ifaddr);
+    return found;
 }

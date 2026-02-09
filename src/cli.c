@@ -15,6 +15,7 @@ void print_usage(const char *prog_name) {
     fprintf(stderr, "  -p <port>           : Port number (default: 9)\n");
     fprintf(stderr, "  -y                  : Skip confirmation prompt\n");
     fprintf(stderr, "  -h                  : Display this help message\n");
+    fprintf(stderr, "  --interface <name>  : Resolve broadcast from interface (e.g., en0)\n");
     fprintf(stderr, "  --version           : Display version\n");
     fprintf(stderr, "  --target <name>     : Wake one named target from config\n");
     fprintf(stderr,

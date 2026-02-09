@@ -152,6 +152,8 @@ int main(int argc, char *argv[]) {
     const char *cli_mac = NULL;
     const char *target_name = NULL;
     const char *broadcast_ip = "255.255.255.255";
+    const char *interface_name = NULL;
+    char resolved_broadcast[INET_ADDRSTRLEN];
     int port = DEFAULT_PORT;
     int has_broadcast_override = 0;
     int has_port_override = 0;
@@ -179,6 +181,7 @@ int main(int argc, char *argv[]) {
         {"help", no_argument, NULL, 'h'},
         {"target", required_argument, NULL, 1006},
         {"list-targets", no_argument, NULL, 1007},
+        {"interface", required_argument, NULL, 1008},
         {"version", no_argument, NULL, 1000},
         {"dry-run", no_argument, NULL, 1001},
         {"quiet", no_argument, NULL, 1002},
@@ -240,21 +243,13 @@ int main(int argc, char *argv[]) {
         case 1007:
             list_targets = 1;
             break;
+        case 1008:
+            interface_name = optarg;
+            break;
         default:
             print_usage(argv[0]);
             goto cleanup;
         }
-    }
-
-    if (!validate_ip(broadcast_ip)) {
-        fprintf(stderr,
-                "Invalid IP address format. Use IPv4 format (e.g., 192.168.1.255)\n");
-        goto cleanup;
-    }
-
-    if (!validate_port(port)) {
-        fprintf(stderr, "Invalid port number. Use a port between 1 and 65535\n");
-        goto cleanup;
     }
 
     if (list_targets) {
@@ -265,6 +260,40 @@ int main(int argc, char *argv[]) {
         }
         print_target_list(&config_list);
         exit_code = EXIT_SUCCESS;
+        goto cleanup;
+    }
+
+    if (interface_name && has_broadcast_override) {
+        fprintf(stderr,
+                "Options --interface and -b/--broadcast cannot be combined\n");
+        goto cleanup;
+    }
+    if (interface_name) {
+        int resolved =
+            resolve_interface_broadcast(interface_name, resolved_broadcast,
+                                        sizeof(resolved_broadcast));
+        if (resolved < 0) {
+            fprintf(stderr, "Failed to resolve interface '%s'\n", interface_name);
+            goto cleanup;
+        }
+        if (resolved == 0) {
+            fprintf(stderr,
+                    "No IPv4 broadcast address found for interface '%s'\n",
+                    interface_name);
+            goto cleanup;
+        }
+        broadcast_ip = resolved_broadcast;
+        has_broadcast_override = 1;
+    }
+
+    if (!validate_ip(broadcast_ip)) {
+        fprintf(stderr,
+                "Invalid IP address format. Use IPv4 format (e.g., 192.168.1.255)\n");
+        goto cleanup;
+    }
+
+    if (!validate_port(port)) {
+        fprintf(stderr, "Invalid port number. Use a port between 1 and 65535\n");
         goto cleanup;
     }
 
