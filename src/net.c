@@ -14,6 +14,7 @@ int send_wol_packet(const char *broadcast_ip, int port,
         return -1;
     }
 
+    /* UDP broadcast is disabled by default, so enable it explicitly. */
     if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &broadcast_enable,
                    sizeof(broadcast_enable)) < 0) {
         perror("Failed to enable broadcast");
@@ -24,6 +25,7 @@ int send_wol_packet(const char *broadcast_ip, int port,
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
+    /* Convert dotted text IP (e.g., "192.168.1.255") into binary form. */
     if (inet_pton(AF_INET, broadcast_ip, &addr.sin_addr) <= 0) {
         perror("Invalid broadcast IP");
         close(sock);
@@ -56,6 +58,7 @@ int resolve_interface_broadcast(const char *ifname, char *out_broadcast,
         return -1;
     }
 
+    /* Scan OS-reported interfaces until we find the requested IPv4 broadcast. */
     for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
         struct sockaddr_in *bcast_addr = NULL;
 
@@ -70,6 +73,7 @@ int resolve_interface_broadcast(const char *ifname, char *out_broadcast,
         }
 
         bcast_addr = (struct sockaddr_in *)ifa->ifa_broadaddr;
+        /* Convert binary broadcast address back to readable dotted form. */
         if (!inet_ntop(AF_INET, &bcast_addr->sin_addr, out_broadcast,
                        out_size)) {
             continue;

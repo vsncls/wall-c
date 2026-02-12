@@ -18,6 +18,7 @@ static int build_config_path(char **out_path) {
     }
     *out_path = NULL;
 
+    /* Prefer XDG config location when available. */
     if (xdg_config_home && xdg_config_home[0] != '\0') {
         path_size = strlen(xdg_config_home) + strlen(CONFIG_FILE_NAME) + 2;
         config_path = malloc(path_size);
@@ -30,6 +31,7 @@ static int build_config_path(char **out_path) {
             return -1;
         }
     } else if (home && home[0] != '\0') {
+        /* Fallback to ~/.config if XDG_CONFIG_HOME is not set. */
         /* "/.config/" is 9 chars, plus null terminator. */
         path_size = strlen(home) + strlen(CONFIG_FILE_NAME) + 10;
         config_path = malloc(path_size);
@@ -57,12 +59,14 @@ static void trim_whitespace(char *s) {
         return;
     }
 
+    /* Trim trailing whitespace/newlines first. */
     len = strlen(s);
     while (len > 0 && (s[len - 1] == '\n' || s[len - 1] == '\r' ||
                        s[len - 1] == ' ' || s[len - 1] == '\t')) {
         s[--len] = '\0';
     }
 
+    /* Then trim leading spaces/tabs by shifting the string left. */
     start = s;
     while (*start == ' ' || *start == '\t') {
         start++;
@@ -211,6 +215,11 @@ static int parse_target_line(const char *line, wake_target_t *target,
         }
     }
 
+    /* Split by spaces/tabs into up to 4 fields:
+     * 1) MAC
+     * 2) MAC + broadcast + port
+     * 3) name + MAC + optional broadcast/port
+     */
     token = strtok_r(buffer, " \t", &saveptr);
     while (token && token_count < 5) {
         tokens[token_count++] = token;
@@ -225,6 +234,7 @@ static int parse_target_line(const char *line, wake_target_t *target,
         return -1;
     }
 
+    /* If first token looks like a MAC, line is unnamed; otherwise token[0] is name. */
     mac_first = normalize_mac(tokens[0], normalized, sizeof(normalized));
 
     if (token_count == 1) {
@@ -298,6 +308,7 @@ int read_targets_from_config(target_list_t *list) {
         return 0;
     }
 
+    /* Parse each non-empty config line into one wake target. */
     while (fgets(line, sizeof(line), file)) {
         wake_target_t target = {0};
         int skip_line = 0;
@@ -382,6 +393,7 @@ int read_mac_from_stdin(char *mac_buf, size_t mac_buf_size) {
         return -1;
     }
 
+    /* Take the first non-empty, non-comment line from stdin as MAC input. */
     while (fgets(line, sizeof(line), stdin)) {
         trim_whitespace(line);
         if (line[0] == '\0' || line[0] == '#') {

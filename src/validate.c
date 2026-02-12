@@ -2,15 +2,18 @@
 
 /* Canonical validator used after normalization. */
 int validate_mac(const char *mac) {
+    /* Canonical text form is always 17 chars: "AA:BB:CC:DD:EE:FF". */
     if (strlen(mac) != 17) {
         return 0;
     }
 
     for (int i = 0; i < 17; i++) {
+        /* Every 3rd character (2, 5, 8, ...) must be ':' separators. */
         if (i % 3 == 2) {
             if (mac[i] != ':') {
                 return 0;
             }
+        /* All other characters must be hexadecimal digits. */
         } else if (!isxdigit((unsigned char)mac[i])) {
             return 0;
         }
@@ -25,6 +28,7 @@ int validate_mac(const char *mac) {
  */
 int normalize_mac(const char *input_mac, char *normalized_mac,
                   size_t normalized_size) {
+    /* Holds only hex digits (12 chars for 6 MAC bytes). */
     char hex[13];
     size_t hex_index = 0;
     size_t len;
@@ -35,6 +39,7 @@ int normalize_mac(const char *input_mac, char *normalized_mac,
 
     len = strlen(input_mac);
     if (len == 17) {
+        /* Accept separators only if the same separator is used throughout. */
         char sep = input_mac[2];
 
         if (sep != ':' && sep != '-') {
@@ -55,6 +60,7 @@ int normalize_mac(const char *input_mac, char *normalized_mac,
             }
         }
     } else if (len == 12) {
+        /* Also accept compact form without separators: AABBCCDDEEFF. */
         for (size_t i = 0; i < len; i++) {
             if (!isxdigit((unsigned char)input_mac[i])) {
                 return 0;
@@ -94,6 +100,7 @@ int should_prompt_for_confirmation(int skip_confirm, int stdin_is_tty) {
 int parse_mac(const char *mac_str, unsigned char *mac_bin) {
     for (int i = 0; i < MAC_ADDR_LEN; i++) {
         unsigned int byte = 0;
+        /* Read two hex chars per byte from positions 0,3,6,... */
         if (sscanf(mac_str + (i * 3), "%2x", &byte) != 1) {
             return 0;
         }

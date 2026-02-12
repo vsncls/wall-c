@@ -7,9 +7,13 @@ on:
 jobs:
   guard-injection-surface:
     runs-on: ubuntu-latest
+    container: debian:trixie-slim
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install ripgrep
+        run: apt-get update && apt-get install -y --no-install-recommends ripgrep
 
       - name: Block process-execution APIs in src
         run: |
@@ -19,12 +23,45 @@ jobs:
             exit 1
           fi
 
-  build-and-test:
+  build-and-test-linux:
+    runs-on: ubuntu-latest
+    container: debian:trixie-slim
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential clang make zsh
+
+      - name: Show compiler
+        run: ${{ matrix.compiler }} --version
+
+      - name: Run unit tests
+        run: make clean && make test CC=${{ matrix.compiler }}
+
+      - name: Run CLI integration tests
+        run: make test-integration CC=${{ matrix.compiler }}
+
+      - name: Build release target
+        run: make release CC=${{ matrix.compiler }}
+
+      - name: Validate zsh completion script
+        run: zsh -n completions/zsh/_wall-c
+
+  build-and-test-macos:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [macos-15, macos-15-intel]
         compiler: [gcc, clang]
 
     steps:
@@ -43,19 +80,36 @@ jobs:
       - name: Build release target
         run: make release CC=${{ matrix.compiler }}
 
-      - name: Install zsh (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install -y zsh
-
       - name: Validate zsh completion script
         run: zsh -n completions/zsh/_wall-c
 
-  sanitizer:
+  sanitizer-linux:
+    runs-on: ubuntu-latest
+    container: debian:trixie-slim
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends clang make
+
+      - name: Show compiler
+        run: clang --version
+
+      - name: Run sanitizers (Linux)
+        env:
+          ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1
+          UBSAN_OPTIONS: print_stacktrace=1
+        run: make clean && make sanitize CC=clang
+
+  sanitizer-macos:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [macos-15, macos-15-intel]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -63,28 +117,33 @@ jobs:
       - name: Show compiler
         run: clang --version
 
-      - name: Run sanitizers (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        env:
-          ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1
-          UBSAN_OPTIONS: print_stacktrace=1
-        run: make clean && make sanitize CC=clang
-
       - name: Run sanitizers (macOS)
-        if: matrix.os == 'macos-latest'
         env:
           ASAN_OPTIONS: detect_leaks=0:strict_string_checks=1
           UBSAN_OPTIONS: print_stacktrace=1
         run: make clean && make sanitize CC=clang
 
-  lint-shell:
+  cross-target-compile:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+
+      - name: Build aarch64-linux-musl
+        run: zig build release -Dtarget=aarch64-linux-musl
+
+  lint-shell:
+    runs-on: ubuntu-latest
+    container: debian:trixie-slim
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Install shellcheck
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
+        run: apt-get update && apt-get install -y --no-install-recommends shellcheck
 
       - name: Lint shell scripts
         run: |

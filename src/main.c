@@ -30,6 +30,7 @@ static int parse_bounded_int(const char *value, int min_value, int max_value,
     }
 
     errno = 0;
+    /* strtol gives robust parsing and overflow detection for user input. */
     parsed = strtol(value, &endptr, 10);
     if (errno != 0 || endptr == value || *endptr != '\0' ||
         parsed < min_value || parsed > max_value) {
@@ -53,6 +54,7 @@ static void sleep_ms(int interval_ms) {
     req.tv_sec = interval_ms / 1000;
     req.tv_nsec = (long)(interval_ms % 1000) * 1000000L;
 
+    /* If interrupted by a signal, continue sleeping for the remaining time. */
     while (nanosleep(&req, &rem) != 0 && errno == EINTR) {
         req = rem;
     }
@@ -101,6 +103,7 @@ static int process_target(const char *raw_mac, const char *broadcast_ip, int por
     unsigned char magic_packet[PACKET_LEN];
     int attempt;
 
+    /* 1) Normalize to one canonical format used by all downstream functions. */
     if (!normalize_mac(raw_mac, normalized_mac, sizeof(normalized_mac))) {
         fprintf(stderr,
                 "Invalid MAC address format '%s'. Use XX:XX:XX:XX:XX:XX, "
@@ -110,6 +113,7 @@ static int process_target(const char *raw_mac, const char *broadcast_ip, int por
         return 0;
     }
 
+    /* 2) Validate canonical form as a separate explicit safety check. */
     if (!validate_mac(normalized_mac)) {
         fprintf(stderr, "Invalid normalized MAC address format '%s'\n",
                 normalized_mac);
@@ -117,6 +121,7 @@ static int process_target(const char *raw_mac, const char *broadcast_ip, int por
         return 0;
     }
 
+    /* 3) Optional interactive safety confirmation. */
     if (prompt_enabled && !confirm_send(normalized_mac, broadcast_ip, port)) {
         if (!quiet) {
             printf("Cancelled for %s.\n", normalized_mac);
@@ -133,6 +138,7 @@ static int process_target(const char *raw_mac, const char *broadcast_ip, int por
             }
             (*sent_count)++;
         } else {
+            /* 4) Convert text MAC -> 6 bytes before building packet payload. */
             if (!parse_mac(normalized_mac, mac_bin)) {
                 fprintf(stderr, "Failed to parse normalized MAC address '%s'\n",
                         normalized_mac);
@@ -141,6 +147,7 @@ static int process_target(const char *raw_mac, const char *broadcast_ip, int por
             }
             build_magic_packet(mac_bin, magic_packet);
 
+            /* 5) Send UDP broadcast packet to the selected destination. */
             if (send_wol_packet(broadcast_ip, port, magic_packet,
                                 sizeof(magic_packet)) != 0) {
                 fprintf(stderr, "Failed to send magic packet to %s (attempt %d/%d)\n",
@@ -207,6 +214,7 @@ int main(int argc, char *argv[]) {
         {"continue-on-error", no_argument, NULL, 1005},
         {0, 0, 0, 0}};
 
+    /* Parse short and long CLI options into runtime settings. */
     while ((opt = getopt_long(argc, argv, "m:b:p:yh", long_options, NULL)) !=
            -1) {
         switch (opt) {
@@ -321,6 +329,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (!cli_mac && !target_name && !stdin_is_tty) {
+        /* In pipelines, allow a MAC from stdin unless -m/--target is provided. */
         int stdin_result = read_mac_from_stdin(stdin_mac, sizeof(stdin_mac));
         if (stdin_result < 0) {
             fprintf(stderr, "Failed to read MAC address from stdin\n");
@@ -332,16 +341,19 @@ int main(int argc, char *argv[]) {
     }
 
     if (cli_mac) {
+        /* Highest precedence: explicit CLI MAC. */
         process_target(cli_mac, broadcast_ip, port,
                        should_prompt_for_confirmation(skip_confirm, stdin_is_tty),
                        repeat_count, interval_ms, dry_run, quiet, &had_error,
                        &sent_count);
     } else if (stdin_has_mac) {
+        /* Next precedence: MAC from stdin. */
         process_target(stdin_mac, broadcast_ip, port,
                        should_prompt_for_confirmation(skip_confirm, stdin_is_tty),
                        repeat_count, interval_ms, dry_run, quiet, &had_error,
                        &sent_count);
     } else {
+        /* Final fallback: config file (single named target or all targets). */
         config_count = read_targets_from_config(&config_list);
         if (config_count < 0) {
             fprintf(stderr, "Failed to parse config file\n");
