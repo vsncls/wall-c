@@ -69,6 +69,7 @@ _wall_c() {
     '--dry-run[Validate and print without sending]' \
     '--continue-on-error[Continue batch processing after failures]' \
     '--quiet[Reduce normal output]' \
+    '--smart[Skip send if host appears awake and verify wake after send]' \
     '--yes[Skip confirmation prompt]' \
     '--version[Show version information]' \
     '-y[Skip confirmation prompt]' \
