@@ -117,23 +117,46 @@ int probe_is_host_awake(const char *normalized_mac, const char *broadcast_ip,
     limit = buffer + needed;
     for (next = buffer; next < limit;) {
         struct rt_msghdr *rtm = (struct rt_msghdr *)next;
+        char *msg_end = NULL;
         struct sockaddr *sa = NULL;
         struct sockaddr_dl *sdl = NULL;
         int addrs = 0;
 
+        if ((size_t)(limit - next) < sizeof(struct rt_msghdr)) {
+            free(buffer);
+            return -1;
+        }
         if (rtm->rtm_msglen == 0) {
             break;
         }
+        if ((size_t)(limit - next) < rtm->rtm_msglen) {
+            free(buffer);
+            return -1;
+        }
+
+        msg_end = next + rtm->rtm_msglen;
 
         sa = (struct sockaddr *)(rtm + 1);
         addrs = rtm->rtm_addrs;
         for (int i = 0; i < RTAX_MAX; i++) {
             if ((addrs & (1 << i)) != 0) {
+                size_t remaining = 0;
+                size_t adv = 0;
+                if ((char *)sa >= msg_end) {
+                    break;
+                }
+                remaining = (size_t)(msg_end - (char *)sa);
+                if (remaining < sizeof(struct sockaddr)) {
+                    break;
+                }
                 if (i == RTAX_GATEWAY && sa->sa_family == AF_LINK) {
                     sdl = (struct sockaddr_dl *)sa;
                 }
-                sa = (struct sockaddr *)((char *)sa +
-                                         sockaddr_advance(sa->sa_len));
+                adv = sockaddr_advance(sa->sa_len);
+                if (adv > remaining) {
+                    break;
+                }
+                sa = (struct sockaddr *)((char *)sa + adv);
             }
         }
 
@@ -145,7 +168,7 @@ int probe_is_host_awake(const char *normalized_mac, const char *broadcast_ip,
             }
         }
 
-        next += rtm->rtm_msglen;
+        next = msg_end;
     }
 
     free(buffer);
