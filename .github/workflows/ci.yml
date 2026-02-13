@@ -95,8 +95,16 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends clang make
 
+          # clang sanitizers on Linux require compiler-rt runtime libraries.
+          clang_major="$(clang -dumpversion | cut -d. -f1)"
+          apt-get install -y --no-install-recommends "libclang-rt-${clang_major}-dev" \
+            || apt-get install -y --no-install-recommends libclang-rt-dev
+
       - name: Show compiler
         run: clang --version
+
+      - name: Show clang resource dir
+        run: clang --print-resource-dir
 
       - name: Run sanitizers (Linux)
         env:
