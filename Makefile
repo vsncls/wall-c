@@ -2,9 +2,9 @@ CC = gcc
 CFLAGS = -Wall -Werror -std=c99 -D_POSIX_C_SOURCE=200809L -I./src -g
 BUILD_DIR = build
 SRC_DIR = src
-SRC_CORE = $(SRC_DIR)/config.c $(SRC_DIR)/validate.c $(SRC_DIR)/packet.c $(SRC_DIR)/net.c $(SRC_DIR)/cli.c
+SRC_CORE = $(SRC_DIR)/config.c $(SRC_DIR)/validate.c $(SRC_DIR)/packet.c $(SRC_DIR)/net.c $(SRC_DIR)/cli.c $(SRC_DIR)/engine.c $(SRC_DIR)/probe.c
 APP_SRCS = $(SRC_DIR)/main.c $(SRC_CORE)
-TEST_SRCS = tests/test.c $(SRC_DIR)/config.c $(SRC_DIR)/validate.c $(SRC_DIR)/packet.c $(SRC_DIR)/net.c
+TEST_SRCS = tests/test.c $(SRC_DIR)/config.c $(SRC_DIR)/validate.c $(SRC_DIR)/packet.c $(SRC_DIR)/net.c $(SRC_DIR)/cli.c $(SRC_DIR)/engine.c $(SRC_DIR)/probe.c
 TEST_BIN = $(BUILD_DIR)/wall-c-test
 SAN_TEST_BIN = $(BUILD_DIR)/wall-c-test-sanitize
 RELEASE_BIN = $(BUILD_DIR)/wall-c-release

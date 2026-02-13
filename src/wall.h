@@ -37,6 +37,14 @@ typedef struct {
     size_t count;
 } target_list_t;
 
+typedef struct {
+    int prompt_enabled;
+    int repeat_count;
+    int interval_ms;
+    int dry_run;
+    int quiet;
+} wake_send_options_t;
+
 /* Read a MAC address from $XDG_CONFIG_HOME or $HOME/.config fallback. */
 char *read_mac_from_config(void);
 
@@ -99,6 +107,18 @@ int send_wol_packet(const char *broadcast_ip, int port,
 /* Resolve interface broadcast IPv4 address into out_broadcast. */
 int resolve_interface_broadcast(const char *ifname, char *out_broadcast,
                                 size_t out_size);
+
+/* Probe helpers for future smart-wake policy. */
+int probe_is_host_awake(const char *normalized_mac, const char *broadcast_ip,
+                        int port, int timeout_ms);
+int probe_wait_for_host_awake(const char *normalized_mac,
+                              const char *broadcast_ip, int port,
+                              int timeout_ms, int interval_ms);
+
+/* Engine entry for the send stage of the wake pipeline. */
+int engine_process_target(const char *raw_mac, const char *broadcast_ip, int port,
+                          const wake_send_options_t *options, int *had_error,
+                          int *sent_count);
 
 /* Unit test entry points. */
 void test_validation(void);

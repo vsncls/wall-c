@@ -40,6 +40,8 @@ pub fn build(b: *std.Build) void {
         "src/packet.c",
         "src/net.c",
         "src/cli.c",
+        "src/engine.c",
+        "src/probe.c",
     };
     const test_sources = &[_][]const u8{
         "tests/test.c",
@@ -47,6 +49,9 @@ pub fn build(b: *std.Build) void {
         "src/validate.c",
         "src/packet.c",
         "src/net.c",
+        "src/cli.c",
+        "src/engine.c",
+        "src/probe.c",
     };
 
     const exe = b.addExecutable(.{

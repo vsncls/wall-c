@@ -5,7 +5,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 #include <unistd.h>
 
 /*
@@ -43,23 +42,6 @@ static int parse_bounded_int(const char *value, int min_value, int max_value,
     return 1;
 }
 
-static void sleep_ms(int interval_ms) {
-    struct timespec req;
-    struct timespec rem;
-
-    if (interval_ms <= 0) {
-        return;
-    }
-
-    req.tv_sec = interval_ms / 1000;
-    req.tv_nsec = (long)(interval_ms % 1000) * 1000000L;
-
-    /* If interrupted by a signal, continue sleeping for the remaining time. */
-    while (nanosleep(&req, &rem) != 0 && errno == EINTR) {
-        req = rem;
-    }
-}
-
 static const wake_target_t *find_named_target(const target_list_t *list,
                                               const char *target_name) {
     if (!list || !target_name) {
@@ -94,83 +76,6 @@ static void print_target_list(const target_list_t *list) {
     }
 }
 
-static int process_target(const char *raw_mac, const char *broadcast_ip, int port,
-                          int prompt_enabled, int repeat_count, int interval_ms,
-                          int dry_run, int quiet, int *had_error,
-                          int *sent_count) {
-    char normalized_mac[18];
-    unsigned char mac_bin[MAC_ADDR_LEN];
-    unsigned char magic_packet[PACKET_LEN];
-    int attempt;
-
-    /* 1) Normalize to one canonical format used by all downstream functions. */
-    if (!normalize_mac(raw_mac, normalized_mac, sizeof(normalized_mac))) {
-        fprintf(stderr,
-                "Invalid MAC address format '%s'. Use XX:XX:XX:XX:XX:XX, "
-                "XX-XX-XX-XX-XX-XX, or XXXXXXXXXXXX\n",
-                raw_mac);
-        *had_error = 1;
-        return 0;
-    }
-
-    /* 2) Validate canonical form as a separate explicit safety check. */
-    if (!validate_mac(normalized_mac)) {
-        fprintf(stderr, "Invalid normalized MAC address format '%s'\n",
-                normalized_mac);
-        *had_error = 1;
-        return 0;
-    }
-
-    /* 3) Optional interactive safety confirmation. */
-    if (prompt_enabled && !confirm_send(normalized_mac, broadcast_ip, port)) {
-        if (!quiet) {
-            printf("Cancelled for %s.\n", normalized_mac);
-        }
-        return 0;
-    }
-
-    for (attempt = 0; attempt < repeat_count; attempt++) {
-        if (dry_run) {
-            if (!quiet) {
-                printf("DRY RUN: would send to %s via %s:%d (attempt %d/%d)\n",
-                       normalized_mac, broadcast_ip, port, attempt + 1,
-                       repeat_count);
-            }
-            (*sent_count)++;
-        } else {
-            /* 4) Convert text MAC -> 6 bytes before building packet payload. */
-            if (!parse_mac(normalized_mac, mac_bin)) {
-                fprintf(stderr, "Failed to parse normalized MAC address '%s'\n",
-                        normalized_mac);
-                *had_error = 1;
-                return 0;
-            }
-            build_magic_packet(mac_bin, magic_packet);
-
-            /* 5) Send UDP broadcast packet to the selected destination. */
-            if (send_wol_packet(broadcast_ip, port, magic_packet,
-                                sizeof(magic_packet)) != 0) {
-                fprintf(stderr, "Failed to send magic packet to %s (attempt %d/%d)\n",
-                        normalized_mac, attempt + 1, repeat_count);
-                *had_error = 1;
-                return 0;
-            }
-
-            if (!quiet) {
-                printf("Magic packet sent to %s (attempt %d/%d)\n", normalized_mac,
-                       attempt + 1, repeat_count);
-            }
-            (*sent_count)++;
-        }
-
-        if (attempt + 1 < repeat_count && interval_ms > 0) {
-            sleep_ms(interval_ms);
-        }
-    }
-
-    return 1;
-}
-
 #ifndef WALL_TEST
 int main(int argc, char *argv[]) {
     const char *cli_mac = NULL;
@@ -193,6 +98,7 @@ int main(int argc, char *argv[]) {
     int continue_on_error = 0;
     int repeat_count = 1;
     int interval_ms = 0;
+    wake_send_options_t send_options = {0};
     char stdin_mac[MAX_MAC_INPUT_LEN];
     target_list_t config_list = {0};
     int stdin_has_mac = 0;
@@ -342,16 +248,24 @@ int main(int argc, char *argv[]) {
 
     if (cli_mac) {
         /* Highest precedence: explicit CLI MAC. */
-        process_target(cli_mac, broadcast_ip, port,
-                       should_prompt_for_confirmation(skip_confirm, stdin_is_tty),
-                       repeat_count, interval_ms, dry_run, quiet, &had_error,
-                       &sent_count);
+        send_options.prompt_enabled =
+            should_prompt_for_confirmation(skip_confirm, stdin_is_tty);
+        send_options.repeat_count = repeat_count;
+        send_options.interval_ms = interval_ms;
+        send_options.dry_run = dry_run;
+        send_options.quiet = quiet;
+        engine_process_target(cli_mac, broadcast_ip, port, &send_options,
+                              &had_error, &sent_count);
     } else if (stdin_has_mac) {
         /* Next precedence: MAC from stdin. */
-        process_target(stdin_mac, broadcast_ip, port,
-                       should_prompt_for_confirmation(skip_confirm, stdin_is_tty),
-                       repeat_count, interval_ms, dry_run, quiet, &had_error,
-                       &sent_count);
+        send_options.prompt_enabled =
+            should_prompt_for_confirmation(skip_confirm, stdin_is_tty);
+        send_options.repeat_count = repeat_count;
+        send_options.interval_ms = interval_ms;
+        send_options.dry_run = dry_run;
+        send_options.quiet = quiet;
+        engine_process_target(stdin_mac, broadcast_ip, port, &send_options,
+                              &had_error, &sent_count);
     } else {
         /* Final fallback: config file (single named target or all targets). */
         config_count = read_targets_from_config(&config_list);
@@ -375,23 +289,31 @@ int main(int argc, char *argv[]) {
                 goto cleanup;
             }
 
-            process_target(
+            send_options.prompt_enabled =
+                should_prompt_for_confirmation(skip_confirm, stdin_is_tty);
+            send_options.repeat_count = repeat_count;
+            send_options.interval_ms = interval_ms;
+            send_options.dry_run = dry_run;
+            send_options.quiet = quiet;
+            engine_process_target(
                 target->mac,
                 has_broadcast_override ? broadcast_ip : target->broadcast_ip,
-                has_port_override ? port : target->port,
-                should_prompt_for_confirmation(skip_confirm, stdin_is_tty),
-                repeat_count, interval_ms, dry_run, quiet, &had_error,
-                &sent_count);
+                has_port_override ? port : target->port, &send_options,
+                &had_error, &sent_count);
         } else {
+            send_options.prompt_enabled =
+                should_prompt_for_confirmation(skip_confirm, stdin_is_tty);
+            send_options.repeat_count = repeat_count;
+            send_options.interval_ms = interval_ms;
+            send_options.dry_run = dry_run;
+            send_options.quiet = quiet;
             for (int i = 0; i < config_count; i++) {
-                int ok = process_target(
+                int ok = engine_process_target(
                     config_list.items[i].mac,
                     has_broadcast_override ? broadcast_ip
                                            : config_list.items[i].broadcast_ip,
                     has_port_override ? port : config_list.items[i].port,
-                    should_prompt_for_confirmation(skip_confirm, stdin_is_tty),
-                    repeat_count, interval_ms, dry_run, quiet, &had_error,
-                    &sent_count);
+                    &send_options, &had_error, &sent_count);
                 if (!ok && !continue_on_error) {
                     break;
                 }
