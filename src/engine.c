@@ -47,6 +47,26 @@ int engine_process_target(const char *raw_mac, const char *broadcast_ip, int por
         return 0;
     }
 
+    if (options->smart_mode && !options->dry_run) {
+        int pre_awake = probe_is_host_awake(
+            normalized_mac, broadcast_ip, port, options->smart_timeout_ms);
+        if (pre_awake < 0) {
+            if (!options->quiet) {
+                fprintf(stderr,
+                        "SMART: pre-check unavailable for %s; proceeding.\n",
+                        normalized_mac);
+            }
+        } else if (pre_awake == 1) {
+            if (!options->quiet) {
+                printf("SMART: %s appears already awake; skipping send.\n",
+                       normalized_mac);
+            }
+            return 1;
+        }
+    } else if (options->smart_mode && options->dry_run && !options->quiet) {
+        printf("DRY RUN: smart pre-check would run for %s\n", normalized_mac);
+    }
+
     if (options->prompt_enabled &&
         !confirm_send(normalized_mac, broadcast_ip, port)) {
         if (!options->quiet) {
@@ -91,6 +111,29 @@ int engine_process_target(const char *raw_mac, const char *broadcast_ip, int por
         if (attempt + 1 < options->repeat_count && options->interval_ms > 0) {
             sleep_ms(options->interval_ms);
         }
+    }
+
+    if (options->smart_mode && !options->dry_run) {
+        int post_awake = probe_wait_for_host_awake(
+            normalized_mac, broadcast_ip, port, options->smart_timeout_ms,
+            options->smart_probe_interval_ms);
+        if (post_awake < 0) {
+            if (!options->quiet) {
+                fprintf(stderr,
+                        "SMART: post-send verification unavailable for %s.\n",
+                        normalized_mac);
+            }
+        } else if (post_awake == 1) {
+            if (!options->quiet) {
+                printf("SMART: %s now appears awake.\n", normalized_mac);
+            }
+        } else if (!options->quiet) {
+            printf("SMART: %s not observed awake within %d ms.\n",
+                   normalized_mac, options->smart_timeout_ms);
+        }
+    } else if (options->smart_mode && options->dry_run && !options->quiet) {
+        printf("DRY RUN: smart post-send verification would run for %s\n",
+               normalized_mac);
     }
 
     return 1;

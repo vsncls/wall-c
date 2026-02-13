@@ -72,7 +72,7 @@ make uninstall
   [-m <mac_address>] [--target <name>] [--list-targets] \
   [-b <broadcast_ip>] [--interface <ifname>] [-p <port>] \
   [--count <n>] [--interval-ms <ms>] [--continue-on-error] \
-  [--dry-run] [--quiet] [-y] [-h] [--version]
+  [--dry-run] [--quiet] [--smart] [-y] [-h] [--version]
 ```
 
 ### Options
@@ -88,6 +88,7 @@ make uninstall
 - `--continue-on-error` - Continue processing later targets after a failure
 - `--dry-run` - Validate and print actions without sending packets
 - `--quiet` - Reduce non-error output
+- `--smart` - Probe if host already appears awake before sending and verify after send (best effort)
 - `-y`, `--yes` - Skip confirmation prompt
 - `-h`, `--help` - Show help
 - `--version` - Show version

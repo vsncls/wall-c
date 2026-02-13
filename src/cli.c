@@ -7,7 +7,7 @@ void print_usage(const char *prog_name) {
             "Usage: %s [-m <mac_address>] [--target <name>] [--list-targets] "
             "[-b <broadcast_ip>] [--interface <name>] [-p <port>] "
             "[--count <n>] [--interval-ms <ms>] [--continue-on-error] "
-            "[-y] [-h] [--version] [--dry-run] [--quiet]\n",
+            "[-y] [-h] [--version] [--dry-run] [--quiet] [--smart]\n",
             prog_name);
     fprintf(stderr, "  -m <mac_address>    : MAC address "
                     "(XX:XX:XX:XX:XX:XX, XX-XX-XX-XX-XX-XX, or XXXXXXXXXXXX)\n");
@@ -28,6 +28,7 @@ void print_usage(const char *prog_name) {
     fprintf(stderr, "  --interval-ms <ms>  : Delay between repeat sends (default: 0)\n");
     fprintf(stderr,
             "  --continue-on-error : Keep processing later targets after failures\n");
+    fprintf(stderr, "  --smart             : Skip send if host appears awake and verify wake after send\n");
     fprintf(stderr, "\nTarget precedence:\n");
     fprintf(stderr, "  1) -m <mac>\n");
     fprintf(stderr, "  2) --target <name>\n");

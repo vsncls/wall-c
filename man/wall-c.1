@@ -13,6 +13,7 @@ wall-c \- send Wake-on-LAN magic packets
 [\-\-dry-run]
 [\-\-continue-on-error]
 [\-\-quiet]
+[\-\-smart]
 [\-y]
 [\-h]
 [\-\-version]
@@ -55,6 +56,9 @@ Continue processing later targets after a failure in batch mode.
 .TP
 .B \-\-quiet
 Reduce non-error output.
+.TP
+.B \-\-smart
+Probe whether target appears awake before send and verify wake after send (best effort).
 .TP
 .B \-y, \-\-yes
 Skip interactive confirmation prompt.

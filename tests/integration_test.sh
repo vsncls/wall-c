@@ -65,6 +65,8 @@ run_case 1 "interface and broadcast conflict exits with failure" \
     "$BIN_PATH" --mac "AA:BB:CC:DD:EE:FF" --interface lo0 -b "192.168.1.255" -y
 run_case 0 "dry-run succeeds for valid MAC" \
     "$BIN_PATH" --mac "AA:BB:CC:DD:EE:FF" --dry-run --count 2 --interval-ms 0 -y
+run_case 0 "smart dry-run succeeds for valid MAC" \
+    "$BIN_PATH" --mac "AA:BB:CC:DD:EE:FF" --smart --dry-run -y
 
 mkdir -p "$XDG_CONFIG_HOME/wall-c"
 printf "nas AA:BB:CC:DD:EE:FF 192.168.1.255 9\nAA:BB:CC:DD:EE:11\n" > "$XDG_CONFIG_HOME/wall-c/config"

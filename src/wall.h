@@ -43,6 +43,9 @@ typedef struct {
     int interval_ms;
     int dry_run;
     int quiet;
+    int smart_mode;
+    int smart_timeout_ms;
+    int smart_probe_interval_ms;
 } wake_send_options_t;
 
 /* Read a MAC address from $XDG_CONFIG_HOME or $HOME/.config fallback. */

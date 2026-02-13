@@ -42,6 +42,23 @@ static int parse_bounded_int(const char *value, int min_value, int max_value,
     return 1;
 }
 
+static wake_send_options_t
+build_send_options(int skip_confirm, int stdin_is_tty, int repeat_count,
+                   int interval_ms, int dry_run, int quiet, int smart_mode,
+                   int smart_timeout_ms, int smart_probe_interval_ms) {
+    wake_send_options_t options = {0};
+    options.prompt_enabled =
+        should_prompt_for_confirmation(skip_confirm, stdin_is_tty);
+    options.repeat_count = repeat_count;
+    options.interval_ms = interval_ms;
+    options.dry_run = dry_run;
+    options.quiet = quiet;
+    options.smart_mode = smart_mode;
+    options.smart_timeout_ms = smart_timeout_ms;
+    options.smart_probe_interval_ms = smart_probe_interval_ms;
+    return options;
+}
+
 static const wake_target_t *find_named_target(const target_list_t *list,
                                               const char *target_name) {
     if (!list || !target_name) {
@@ -98,6 +115,9 @@ int main(int argc, char *argv[]) {
     int continue_on_error = 0;
     int repeat_count = 1;
     int interval_ms = 0;
+    int smart_mode = 0;
+    int smart_timeout_ms = 1500;
+    int smart_probe_interval_ms = 250;
     wake_send_options_t send_options = {0};
     char stdin_mac[MAX_MAC_INPUT_LEN];
     target_list_t config_list = {0};
@@ -118,6 +138,7 @@ int main(int argc, char *argv[]) {
         {"count", required_argument, NULL, 1003},
         {"interval-ms", required_argument, NULL, 1004},
         {"continue-on-error", no_argument, NULL, 1005},
+        {"smart", no_argument, NULL, 1009},
         {0, 0, 0, 0}};
 
     /* Parse short and long CLI options into runtime settings. */
@@ -176,6 +197,9 @@ int main(int argc, char *argv[]) {
             break;
         case 1008:
             interface_name = optarg;
+            break;
+        case 1009:
+            smart_mode = 1;
             break;
         default:
             print_usage(argv[0]);
@@ -248,22 +272,16 @@ int main(int argc, char *argv[]) {
 
     if (cli_mac) {
         /* Highest precedence: explicit CLI MAC. */
-        send_options.prompt_enabled =
-            should_prompt_for_confirmation(skip_confirm, stdin_is_tty);
-        send_options.repeat_count = repeat_count;
-        send_options.interval_ms = interval_ms;
-        send_options.dry_run = dry_run;
-        send_options.quiet = quiet;
+        send_options = build_send_options(
+            skip_confirm, stdin_is_tty, repeat_count, interval_ms, dry_run,
+            quiet, smart_mode, smart_timeout_ms, smart_probe_interval_ms);
         engine_process_target(cli_mac, broadcast_ip, port, &send_options,
                               &had_error, &sent_count);
     } else if (stdin_has_mac) {
         /* Next precedence: MAC from stdin. */
-        send_options.prompt_enabled =
-            should_prompt_for_confirmation(skip_confirm, stdin_is_tty);
-        send_options.repeat_count = repeat_count;
-        send_options.interval_ms = interval_ms;
-        send_options.dry_run = dry_run;
-        send_options.quiet = quiet;
+        send_options = build_send_options(
+            skip_confirm, stdin_is_tty, repeat_count, interval_ms, dry_run,
+            quiet, smart_mode, smart_timeout_ms, smart_probe_interval_ms);
         engine_process_target(stdin_mac, broadcast_ip, port, &send_options,
                               &had_error, &sent_count);
     } else {
@@ -289,24 +307,18 @@ int main(int argc, char *argv[]) {
                 goto cleanup;
             }
 
-            send_options.prompt_enabled =
-                should_prompt_for_confirmation(skip_confirm, stdin_is_tty);
-            send_options.repeat_count = repeat_count;
-            send_options.interval_ms = interval_ms;
-            send_options.dry_run = dry_run;
-            send_options.quiet = quiet;
+            send_options = build_send_options(
+                skip_confirm, stdin_is_tty, repeat_count, interval_ms, dry_run,
+                quiet, smart_mode, smart_timeout_ms, smart_probe_interval_ms);
             engine_process_target(
                 target->mac,
                 has_broadcast_override ? broadcast_ip : target->broadcast_ip,
                 has_port_override ? port : target->port, &send_options,
                 &had_error, &sent_count);
         } else {
-            send_options.prompt_enabled =
-                should_prompt_for_confirmation(skip_confirm, stdin_is_tty);
-            send_options.repeat_count = repeat_count;
-            send_options.interval_ms = interval_ms;
-            send_options.dry_run = dry_run;
-            send_options.quiet = quiet;
+            send_options = build_send_options(
+                skip_confirm, stdin_is_tty, repeat_count, interval_ms, dry_run,
+                quiet, smart_mode, smart_timeout_ms, smart_probe_interval_ms);
             for (int i = 0; i < config_count; i++) {
                 int ok = engine_process_target(
                     config_list.items[i].mac,
