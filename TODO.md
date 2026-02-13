@@ -24,12 +24,12 @@
 
 ### Next Candidates
 
-- [ ] Add interface-selection completion hints for fish from live interfaces.
-- [ ] Add optional JSON output mode for scripting.
+- [ ] Smart option with homegrown arping to a. avoid waking if already up and b. loop retry with a timeout while waiting for arpong
 - [ ] Add `--timeout-ms` for send retry pacing in unstable environments.
+- [ ] Add interface-selection completion hints for fish from live interfaces.
 
 ### Done Criteria
 
-- [ ] CI green on macOS + Linux after merge.
+- [ ] CI green on macOS + Linux for ARM64 and x86_64 after merge.
 - [ ] Sanitizer jobs remain zero findings.
 - [ ] Release workflow validated on first `v*` tag.
