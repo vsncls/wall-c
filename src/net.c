@@ -8,6 +8,7 @@ int send_wol_packet(const char *broadcast_ip, int port,
     int broadcast_enable = 1;
     struct sockaddr_in addr;
 
+    /* Wake-on-LAN is sent as a UDP datagram over IPv4 broadcast. */
     sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock < 0) {
         perror("Socket creation failed");
@@ -32,6 +33,10 @@ int send_wol_packet(const char *broadcast_ip, int port,
         return -1;
     }
 
+    /*
+     * sendto transmits one datagram to the broadcast endpoint.
+     * packet_len is expected to be PACKET_LEN for WoL.
+     */
     if (sendto(sock, packet, packet_len, 0, (struct sockaddr *)&addr,
                sizeof(addr)) < 0) {
         perror("Failed to send packet");
@@ -62,12 +67,15 @@ int resolve_interface_broadcast(const char *ifname, char *out_broadcast,
     for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
         struct sockaddr_in *bcast_addr = NULL;
 
+        /* Keep only records that belong to the requested interface name. */
         if (!ifa->ifa_name || strcmp(ifa->ifa_name, ifname) != 0) {
             continue;
         }
+        /* Some interface records do not carry broadcast information. */
         if (!ifa->ifa_broadaddr) {
             continue;
         }
+        /* This resolver intentionally handles IPv4 only. */
         if (ifa->ifa_broadaddr->sa_family != AF_INET) {
             continue;
         }

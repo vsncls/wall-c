@@ -15,11 +15,20 @@ static void sleep_ms(int interval_ms) {
     req.tv_sec = interval_ms / 1000;
     req.tv_nsec = (long)(interval_ms % 1000) * 1000000L;
 
+    /* Retry if sleep was interrupted by a signal. */
     while (nanosleep(&req, &rem) != 0 && errno == EINTR) {
         req = rem;
     }
 }
 
+/*
+ * Process one target end-to-end:
+ * 1) Normalize and validate MAC text.
+ * 2) Optional smart pre-check (skip send if already awake).
+ * 3) Optional user confirmation prompt.
+ * 4) Send packet one or more times (or print dry-run actions).
+ * 5) Optional smart post-check (verify wake was observed).
+ */
 int engine_process_target(const char *raw_mac, const char *broadcast_ip, int port,
                           const wake_send_options_t *options, int *had_error,
                           int *sent_count) {
@@ -48,6 +57,10 @@ int engine_process_target(const char *raw_mac, const char *broadcast_ip, int por
     }
 
     if (options->smart_mode && !options->dry_run) {
+        /*
+         * Pre-check avoids unnecessary wake packets when the host is already
+         * reachable in ARP/routing tables.
+         */
         int pre_awake = probe_is_host_awake(
             normalized_mac, broadcast_ip, port, options->smart_timeout_ms);
         if (pre_awake < 0) {
@@ -84,6 +97,10 @@ int engine_process_target(const char *raw_mac, const char *broadcast_ip, int por
             }
             (*sent_count)++;
         } else {
+            /*
+             * Convert validated MAC string to bytes just before packet build.
+             * This keeps the binary representation close to where it is used.
+             */
             if (!parse_mac(normalized_mac, mac_bin)) {
                 fprintf(stderr, "Failed to parse normalized MAC address '%s'\n",
                         normalized_mac);
@@ -109,11 +126,17 @@ int engine_process_target(const char *raw_mac, const char *broadcast_ip, int por
         }
 
         if (attempt + 1 < options->repeat_count && options->interval_ms > 0) {
+            /* Delay only between attempts, never after the final send. */
             sleep_ms(options->interval_ms);
         }
     }
 
     if (options->smart_mode && !options->dry_run) {
+        /*
+         * Post-check polls for wake evidence within a bounded timeout.
+         * The send result is still considered successful even if this check
+         * cannot prove the host is awake; it is advisory output.
+         */
         int post_awake = probe_wait_for_host_awake(
             normalized_mac, broadcast_ip, port, options->smart_timeout_ms,
             options->smart_probe_interval_ms);

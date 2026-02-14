@@ -52,6 +52,7 @@ int normalize_mac(const char *input_mac, char *normalized_mac,
                     return 0;
                 }
             } else {
+                /* Uppercasing produces one consistent canonical output format. */
                 if (!isxdigit((unsigned char)input_mac[i])) {
                     return 0;
                 }
@@ -76,6 +77,10 @@ int normalize_mac(const char *input_mac, char *normalized_mac,
     }
     hex[hex_index] = '\0';
 
+    /*
+     * Reinsert separators into the canonical XX:XX:XX:XX:XX:XX layout.
+     * snprintf keeps writes bounded by normalized_size.
+     */
     if (snprintf(normalized_mac, normalized_size,
                  "%.2s:%.2s:%.2s:%.2s:%.2s:%.2s", hex, hex + 2, hex + 4,
                  hex + 6, hex + 8, hex + 10) < 0) {
@@ -87,6 +92,7 @@ int normalize_mac(const char *input_mac, char *normalized_mac,
 
 int validate_ip(const char *ip) {
     struct sockaddr_in sa;
+    /* inet_pton returns 1 on success, 0 for invalid text, -1 for errors. */
     return inet_pton(AF_INET, ip, &(sa.sin_addr)) != 0;
 }
 
@@ -98,6 +104,10 @@ int should_prompt_for_confirmation(int skip_confirm, int stdin_is_tty) {
 
 /* Parse normalized MAC text into 6 bytes. */
 int parse_mac(const char *mac_str, unsigned char *mac_bin) {
+    /*
+     * Caller provides canonical MAC text ("AA:BB:..."), so each byte starts
+     * at offsets 0, 3, 6, 9, 12, and 15.
+     */
     for (int i = 0; i < MAC_ADDR_LEN; i++) {
         unsigned int byte = 0;
         /* Read two hex chars per byte from positions 0,3,6,... */

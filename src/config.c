@@ -7,6 +7,15 @@
 
 #define CONFIG_FILE_NAME "wall-c/config"
 
+/*
+ * Build the config path according to XDG conventions:
+ * 1) $XDG_CONFIG_HOME/wall-c/config
+ * 2) $HOME/.config/wall-c/config
+ * Returns:
+ *   1  path built successfully and stored in *out_path
+ *   0  no suitable environment variable present
+ *  -1  allocation/formatting error
+ */
 static int build_config_path(char **out_path) {
     char *xdg_config_home = getenv("XDG_CONFIG_HOME");
     char *home = getenv("HOME");
@@ -59,14 +68,17 @@ static void trim_whitespace(char *s) {
         return;
     }
 
-    /* Trim trailing whitespace/newlines first. */
+    /* Trim trailing whitespace/newlines first (right side of the string). */
     len = strlen(s);
     while (len > 0 && (s[len - 1] == '\n' || s[len - 1] == '\r' ||
                        s[len - 1] == ' ' || s[len - 1] == '\t')) {
         s[--len] = '\0';
     }
 
-    /* Then trim leading spaces/tabs by shifting the string left. */
+    /*
+     * Then trim leading spaces/tabs (left side) by shifting bytes left.
+     * memmove is used because source/destination overlap in the same buffer.
+     */
     start = s;
     while (*start == ' ' || *start == '\t') {
         start++;
@@ -113,8 +125,11 @@ static int append_target(target_list_t *list, wake_target_t *target) {
         return -1;
     }
 
-    new_items =
-        realloc(list->items, sizeof(wake_target_t) * (list->count + 1));
+    /*
+     * Grow by one element. We only assign back to list->items after realloc
+     * succeeds so we never lose the original pointer on allocation failure.
+     */
+    new_items = realloc(list->items, sizeof(wake_target_t) * (list->count + 1));
     if (!new_items) {
         return -1;
     }
@@ -162,6 +177,7 @@ static int parse_port_string(const char *token, int *out_port) {
         return -1;
     }
 
+    /* Parse and validate in one place so callers can stay simple. */
     errno = 0;
     parsed = strtol(token, &endptr, 10);
     if (errno != 0 || endptr == token || *endptr != '\0' || parsed < 1 ||
@@ -195,6 +211,10 @@ static int parse_target_line(const char *line, wake_target_t *target,
     memset(target, 0, sizeof(*target));
     *skip_line = 0;
 
+    /*
+     * Copy into a writable local buffer because tokenization and trimming
+     * modify the string in-place.
+     */
     if (snprintf(buffer, sizeof(buffer), "%s", line) >= (int)sizeof(buffer)) {
         return -1;
     }
@@ -205,6 +225,7 @@ static int parse_target_line(const char *line, wake_target_t *target,
         return 0;
     }
 
+    /* Support inline comments by truncating at '#'. */
     hash = strchr(buffer, '#');
     if (hash) {
         *hash = '\0';
@@ -234,7 +255,12 @@ static int parse_target_line(const char *line, wake_target_t *target,
         return -1;
     }
 
-    /* If first token looks like a MAC, line is unnamed; otherwise token[0] is name. */
+    /*
+     * If token[0] is MAC-like, the line is unnamed:
+     *   MAC [BROADCAST] [PORT]
+     * Otherwise token[0] is treated as a target name:
+     *   NAME MAC [BROADCAST] [PORT]
+     */
     mac_first = normalize_mac(tokens[0], normalized, sizeof(normalized));
 
     if (token_count == 1) {
@@ -263,6 +289,7 @@ static int parse_target_line(const char *line, wake_target_t *target,
     }
 
     if (name) {
+        /* Name is optional, so allocate it only when present. */
         target->name = dup_string(name);
         if (!target->name) {
             return -1;
@@ -305,6 +332,7 @@ int read_targets_from_config(target_list_t *list) {
     file = fopen(config_path, "r");
     free(config_path);
     if (!file) {
+        /* Missing config file is a valid state; caller may provide MAC another way. */
         return 0;
     }
 
@@ -349,6 +377,10 @@ int read_macs_from_config(mac_list_t *list) {
         return count;
     }
 
+    /*
+     * Legacy helper returns only MAC strings, so convert richer target records
+     * to a flat list of MAC values.
+     */
     for (size_t i = 0; i < target_list.count; i++) {
         if (append_mac(list, target_list.items[i].mac) != 0) {
             free_mac_list(list);
@@ -399,6 +431,7 @@ int read_mac_from_stdin(char *mac_buf, size_t mac_buf_size) {
         if (line[0] == '\0' || line[0] == '#') {
             continue;
         }
+        /* Enforce caller-provided buffer bounds before copy. */
         if (strlen(line) + 1 > mac_buf_size) {
             return -1;
         }

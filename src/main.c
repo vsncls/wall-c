@@ -29,7 +29,13 @@ static int parse_bounded_int(const char *value, int min_value, int max_value,
     }
 
     errno = 0;
-    /* strtol gives robust parsing and overflow detection for user input. */
+    /*
+     * strtol is used instead of atoi so we can detect:
+     * - non-numeric input ("abc"),
+     * - partially numeric input ("10ms"),
+     * - overflow/underflow,
+     * - out-of-range values for this specific option.
+     */
     parsed = strtol(value, &endptr, 10);
     if (errno != 0 || endptr == value || *endptr != '\0' ||
         parsed < min_value || parsed > max_value) {
@@ -47,6 +53,10 @@ build_send_options(int skip_confirm, int stdin_is_tty, int repeat_count,
                    int interval_ms, int dry_run, int quiet, int smart_mode,
                    int smart_timeout_ms, int smart_probe_interval_ms) {
     wake_send_options_t options = {0};
+    /*
+     * Keep all send-related toggles in one struct so downstream code
+     * has one coherent source of truth instead of many independent flags.
+     */
     options.prompt_enabled =
         should_prompt_for_confirmation(skip_confirm, stdin_is_tty);
     options.repeat_count = repeat_count;
@@ -66,6 +76,7 @@ static const wake_target_t *find_named_target(const target_list_t *list,
     }
 
     for (size_t i = 0; i < list->count; i++) {
+        /* Named lookup is exact and case-sensitive by design. */
         if (list->items[i].name &&
             strcmp(list->items[i].name, target_name) == 0) {
             return &list->items[i];
@@ -87,6 +98,7 @@ static void print_target_list(const target_list_t *list) {
             printf("%s\t%s\t%s\t%d\n", name, list->items[i].mac,
                    list->items[i].broadcast_ip, list->items[i].port);
         } else {
+            /* Unnamed entries are still valid; print a stable placeholder. */
             printf("(unnamed-%zu)\t%s\t%s\t%d\n", i + 1, list->items[i].mac,
                    list->items[i].broadcast_ip, list->items[i].port);
         }
@@ -141,7 +153,13 @@ int main(int argc, char *argv[]) {
         {"smart", no_argument, NULL, 1009},
         {0, 0, 0, 0}};
 
-    /* Parse short and long CLI options into runtime settings. */
+    /*
+     * Parse short and long CLI options into runtime settings.
+     * getopt_long returns either:
+     * - a short option character ('m', 'p', ...),
+     * - our custom numeric code for long-only options (1000+),
+     * - -1 when parsing is complete.
+     */
     while ((opt = getopt_long(argc, argv, "m:b:p:yh", long_options, NULL)) !=
            -1) {
         switch (opt) {
@@ -208,6 +226,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (list_targets) {
+        /* --list-targets is an introspection command: print and exit. */
         config_count = read_targets_from_config(&config_list);
         if (config_count < 0) {
             fprintf(stderr, "Failed to parse config file\n");
@@ -219,11 +238,13 @@ int main(int argc, char *argv[]) {
     }
 
     if (interface_name && has_broadcast_override) {
+        /* Interface-derived broadcast and manual broadcast are mutually exclusive. */
         fprintf(stderr,
                 "Options --interface and -b/--broadcast cannot be combined\n");
         goto cleanup;
     }
     if (interface_name) {
+        /* Resolve interface broadcast once and then use it like any other override. */
         int resolved =
             resolve_interface_broadcast(interface_name, resolved_broadcast,
                                         sizeof(resolved_broadcast));
@@ -253,6 +274,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (!skip_confirm && !stdin_is_tty) {
+        /* Interactive confirmation cannot work in piped/non-interactive mode. */
         fprintf(stderr,
                 "Non-interactive stdin detected. Use -y to skip confirmation.\n");
         goto cleanup;
@@ -299,6 +321,7 @@ int main(int argc, char *argv[]) {
         }
 
         if (target_name) {
+            /* --target narrows config processing to one matching named entry. */
             const wake_target_t *target =
                 find_named_target(&config_list, target_name);
             if (!target) {
@@ -319,6 +342,10 @@ int main(int argc, char *argv[]) {
             send_options = build_send_options(
                 skip_confirm, stdin_is_tty, repeat_count, interval_ms, dry_run,
                 quiet, smart_mode, smart_timeout_ms, smart_probe_interval_ms);
+            /*
+             * Default config behavior: process every target in file order.
+             * continue_on_error controls whether one failure stops the batch.
+             */
             for (int i = 0; i < config_count; i++) {
                 int ok = engine_process_target(
                     config_list.items[i].mac,
@@ -340,6 +367,7 @@ int main(int argc, char *argv[]) {
     }
 
 cleanup:
+    /* Single exit path keeps cleanup consistent across all error branches. */
     free_target_list(&config_list);
     return exit_code;
 }

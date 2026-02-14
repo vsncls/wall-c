@@ -2,6 +2,9 @@
 
 ### Completed (Recent)
 
+- [x] Documentation quality:
+- [x] Expanded beginner-focused explanatory comments across `src/*.c` without behavior changes.
+
 - [x] CLI 2.0:
 - [x] Added long flags (`--mac`, `--broadcast`, `--port`, `--yes`, `--help`, `--version`).
 - [x] Added automation flags (`--dry-run`, `--quiet`).

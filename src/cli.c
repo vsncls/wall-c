@@ -3,6 +3,10 @@
 
 /* Print help text for CLI arguments. */
 void print_usage(const char *prog_name) {
+    /*
+     * Keep this text aligned with supported getopt/getopt_long flags so users,
+     * tests, and docs all describe the same command surface.
+     */
     fprintf(stderr,
             "Usage: %s [-m <mac_address>] [--target <name>] [--list-targets] "
             "[-b <broadcast_ip>] [--interface <name>] [-p <port>] "
@@ -51,6 +55,10 @@ int confirm_send(const char *mac, const char *broadcast_ip, int port) {
     printf("Confirm [y/N]: ");
     fflush(stdout);
 
+    /*
+     * Read one decision character, then consume the rest of the line so
+     * leftover input does not affect later prompts or reads.
+     */
     c = getchar();
     while (getchar() != '\n' && !feof(stdin)) {
         ;

@@ -14,6 +14,7 @@ This file gives coding agents the minimum context needed to work safely and quic
 
 ## Ground Rules
 - Keep changes tightly scoped to the user request.
+- Add and maintain very thorough comments aimed at beginner human coders when writing or changing code.
 - Do not introduce new dependencies unless explicitly requested.
 - Preserve current CLI behavior and flag compatibility unless asked to change it.
 - Prefer small, reviewable patches over broad refactors.

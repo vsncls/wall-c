@@ -27,6 +27,7 @@ static void sleep_ms(int interval_ms) {
     req.tv_sec = interval_ms / 1000;
     req.tv_nsec = (long)(interval_ms % 1000) * 1000000L;
 
+    /* Continue sleeping for the remaining time if interrupted by a signal. */
     while (nanosleep(&req, &rem) != 0 && errno == EINTR) {
         req = rem;
     }
@@ -35,6 +36,7 @@ static void sleep_ms(int interval_ms) {
 #if defined(__APPLE__)
 static size_t sockaddr_advance(size_t len) {
     size_t align = sizeof(uintptr_t) - 1;
+    /* Route messages use aligned variable-length sockaddr blocks. */
     size_t used = len == 0 ? sizeof(uintptr_t) : len;
     return (used + align) & ~align;
 }
@@ -65,6 +67,7 @@ int probe_is_host_awake(const char *normalized_mac, const char *broadcast_ip,
         return -1;
     }
 
+    /* /proc/net/arp is text; scan for a hardware address match. */
     while (fgets(line, sizeof(line), file)) {
         char ip[64] = {0};
         char hw_type[16] = {0};
@@ -97,6 +100,7 @@ int probe_is_host_awake(const char *normalized_mac, const char *broadcast_ip,
         return -1;
     }
 
+    /* First sysctl call asks kernel how much buffer space we need. */
     if (sysctl(mib, 6, NULL, &needed, NULL, 0) < 0) {
         return -1;
     }
@@ -109,6 +113,7 @@ int probe_is_host_awake(const char *normalized_mac, const char *broadcast_ip,
         return -1;
     }
 
+    /* Second call fetches route/ARP records into the allocated buffer. */
     if (sysctl(mib, 6, buffer, &needed, NULL, 0) < 0) {
         free(buffer);
         return -1;
@@ -138,6 +143,10 @@ int probe_is_host_awake(const char *normalized_mac, const char *broadcast_ip,
 
         sa = (struct sockaddr *)(rtm + 1);
         addrs = rtm->rtm_addrs;
+        /*
+         * Walk variable-length sockaddrs attached to this route message
+         * and extract the link-layer (MAC) gateway address when present.
+         */
         for (int i = 0; i < RTAX_MAX; i++) {
             if ((addrs & (1 << i)) != 0) {
                 size_t remaining = 0;
@@ -192,6 +201,7 @@ int probe_wait_for_host_awake(const char *normalized_mac,
         return probe_is_host_awake(normalized_mac, broadcast_ip, port, 0);
     }
 
+    /* Poll until timeout budget is exhausted. */
     while (elapsed_ms <= timeout_ms) {
         int state =
             probe_is_host_awake(normalized_mac, broadcast_ip, port, 0);
