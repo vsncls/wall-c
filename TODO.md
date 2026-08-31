@@ -25,6 +25,18 @@
 - [x] Docs:
 - [x] Updated `README.md` for new options, config format, install flow, and troubleshooting.
 
+### Formal Verification
+
+- [ ] Generate and commit `flake.lock`; validate `nix flake check` on Nix-capable macOS/Linux hosts.
+- [ ] Confirm the pinned CompCert package can compile the current `wall-c` C subset.
+- [ ] Create the Lean 4 proof project and mechanically import `build_magic_packet` first.
+- [ ] Prove exact packet bounds/layout, then validation/parser contracts.
+- [ ] Prove `config.c` ownership invariants and add explicit allocation-overflow guards where required.
+- [ ] Establish a checked Lean-semantics ↔ CompCert-C correspondence before making compiled-artifact claims.
+- [ ] Add independent Nix rebuild/hash comparison for assembly and executable artifacts.
+
+See `proof-plan.md` for theorem scope, trusted boundaries, and milestone details.
+
 ### Next Candidates
 
 - [ ] Smart option with homegrown arping to a. avoid waking if already up and b. loop retry with a timeout while waiting for arpong
