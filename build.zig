@@ -2,12 +2,12 @@ const std = @import("std");
 
 fn addCSources(
     b: *std.Build,
-    exe: *std.Build.Step.Compile,
+    module: *std.Build.Module,
     sources: []const []const u8,
     flags: []const []const u8,
 ) void {
     for (sources) |src| {
-        exe.addCSourceFile(.{ .file = b.path(src), .flags = flags });
+        module.addCSourceFile(.{ .file = b.path(src), .flags = flags });
     }
 }
 
@@ -62,8 +62,7 @@ pub fn build(b: *std.Build) void {
             .link_libc = true,
         }),
     });
-    addCSources(b, exe, app_sources, c_flags);
-    exe.linkLibC();
+    addCSources(b, exe.root_module, app_sources, c_flags);
     b.installArtifact(exe);
 
     const test_exe = b.addExecutable(.{
@@ -74,8 +73,7 @@ pub fn build(b: *std.Build) void {
             .link_libc = true,
         }),
     });
-    addCSources(b, test_exe, test_sources, test_flags);
-    test_exe.linkLibC();
+    addCSources(b, test_exe.root_module, test_sources, test_flags);
     b.installArtifact(test_exe);
 
     const run_tests = b.addRunArtifact(test_exe);
@@ -91,8 +89,7 @@ pub fn build(b: *std.Build) void {
             .sanitize_c = .full,
         }),
     });
-    addCSources(b, sanitize_exe, test_sources, sanitize_test_flags);
-    sanitize_exe.linkLibC();
+    addCSources(b, sanitize_exe.root_module, test_sources, sanitize_test_flags);
     b.installArtifact(sanitize_exe);
 
     const run_sanitize = b.addRunArtifact(sanitize_exe);
@@ -107,8 +104,7 @@ pub fn build(b: *std.Build) void {
             .link_libc = true,
         }),
     });
-    addCSources(b, release_exe, app_sources, c_flags);
-    release_exe.linkLibC();
+    addCSources(b, release_exe.root_module, app_sources, c_flags);
     b.installArtifact(release_exe);
 
     const release_step = b.step("release", "Build release binary");
