@@ -1,17 +1,36 @@
 #include "wall.h"
 #include <stdio.h>
+#include <string.h>
+
+/* Read exactly one line from stdin as a MAC address. */
+int read_mac_from_stdin(char *mac_buf, size_t mac_buf_size) {
+    size_t line_len;
+
+    if (!mac_buf || mac_buf_size < 2) {
+        return -1;
+    }
+
+    if (!fgets(mac_buf, mac_buf_size, stdin)) {
+        return feof(stdin) ? 0 : -1;
+    }
+
+    /* A line that does not fit is rejected instead of being partially parsed. */
+    if (!strchr(mac_buf, '\n') && !strchr(mac_buf, '\r') && !feof(stdin)) {
+        return -1;
+    }
+
+    line_len = strcspn(mac_buf, "\r\n");
+    mac_buf[line_len] = '\0';
+    return line_len > 0 ? 1 : 0;
+}
 
 /* Print help text for CLI arguments. */
 void print_usage(const char *prog_name) {
-    /*
-     * Keep this text aligned with supported getopt/getopt_long flags so users,
-     * tests, and docs all describe the same command surface.
-     */
     fprintf(stderr,
-            "Usage: %s [-m <mac_address>] [--target <name>] [--list-targets] "
-            "[-b <broadcast_ip>] [--interface <name>] [-p <port>] "
-            "[--count <n>] [--interval-ms <ms>] [--continue-on-error] "
-            "[-y] [-h] [--version] [--dry-run] [--quiet] [--smart]\n",
+            "Usage: %s [-m <mac_address>] [-b <broadcast_ip>] "
+            "[--interface <name>] [-p <port>] [--count <n>] "
+            "[--interval-ms <ms>] [-y] [-h] [--version] [--dry-run] "
+            "[--quiet] [--smart]\n",
             prog_name);
     fprintf(stderr, "  -m <mac_address>    : MAC address "
                     "(XX:XX:XX:XX:XX:XX, XX-XX-XX-XX-XX-XX, or XXXXXXXXXXXX)\n");
@@ -23,23 +42,14 @@ void print_usage(const char *prog_name) {
     fprintf(stderr, "  -h                  : Display this help message\n");
     fprintf(stderr, "  --interface <name>  : Resolve broadcast from interface (e.g., en0)\n");
     fprintf(stderr, "  --version           : Display version\n");
-    fprintf(stderr, "  --target <name>     : Wake one named target from config\n");
-    fprintf(stderr,
-            "  --list-targets      : Print parsed targets from config and exit\n");
     fprintf(stderr, "  --dry-run           : Validate and print actions without sending\n");
     fprintf(stderr, "  --quiet             : Reduce normal output\n");
-    fprintf(stderr, "  --count <n>         : Send packet n times per target (default: 1)\n");
+    fprintf(stderr, "  --count <n>         : Send packet n times (default: 1)\n");
     fprintf(stderr, "  --interval-ms <ms>  : Delay between repeat sends (default: 0)\n");
-    fprintf(stderr,
-            "  --continue-on-error : Keep processing later targets after failures\n");
     fprintf(stderr, "  --smart             : Skip send if host appears awake and verify wake after send\n");
-    fprintf(stderr, "\nTarget precedence:\n");
-    fprintf(stderr, "  1) -m <mac>\n");
-    fprintf(stderr, "  2) --target <name>\n");
-    fprintf(stderr, "  3) first MAC from stdin\n");
-    fprintf(stderr, "  4) all targets in config file\n");
-    fprintf(stderr, "\nConfig file location: $XDG_CONFIG_HOME/wall-c/config "
-                    "or ~/.config/wall-c/config\n");
+    fprintf(stderr, "\nTarget source:\n");
+    fprintf(stderr, "  1) -m/--mac <mac>\n");
+    fprintf(stderr, "  2) one MAC from stdin\n");
 }
 
 void print_version(void) { printf("wall-c %s\n", WALL_C_VERSION); }
@@ -55,10 +65,6 @@ int confirm_send(const char *mac, const char *broadcast_ip, int port) {
     printf("Confirm [y/N]: ");
     fflush(stdout);
 
-    /*
-     * Read one decision character, then consume the rest of the line so
-     * leftover input does not affect later prompts or reads.
-     */
     c = getchar();
     while (getchar() != '\n' && !feof(stdin)) {
         ;

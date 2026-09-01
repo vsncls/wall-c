@@ -26,16 +26,9 @@ pub fn build(b: *std.Build) void {
         "-Isrc",
         "-DWALL_TEST",
     };
-    const sanitize_test_flags = &[_][]const u8{
-        "-std=c99",
-        "-D_POSIX_C_SOURCE=200809L",
-        "-Isrc",
-        "-DWALL_TEST",
-    };
 
     const app_sources = &[_][]const u8{
         "src/main.c",
-        "src/config.c",
         "src/validate.c",
         "src/packet.c",
         "src/net.c",
@@ -45,7 +38,6 @@ pub fn build(b: *std.Build) void {
     };
     const test_sources = &[_][]const u8{
         "tests/test.c",
-        "src/config.c",
         "src/validate.c",
         "src/packet.c",
         "src/net.c",
@@ -89,7 +81,7 @@ pub fn build(b: *std.Build) void {
             .sanitize_c = .full,
         }),
     });
-    addCSources(b, sanitize_exe.root_module, test_sources, sanitize_test_flags);
+    addCSources(b, sanitize_exe.root_module, test_sources, test_flags);
     b.installArtifact(sanitize_exe);
 
     const run_sanitize = b.addRunArtifact(sanitize_exe);

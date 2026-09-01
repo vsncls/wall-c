@@ -1,10 +1,7 @@
 #ifndef WALL_H
 #define WALL_H
 
-/*
- * Shared headers for runtime and tests.
- * Centralizing includes keeps translation units consistent.
- */
+/* Shared headers for runtime and tests. */
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <stdio.h>
@@ -18,24 +15,6 @@
 #define MAC_ADDR_LEN 6
 #define PACKET_LEN 102
 #define MAX_MAC_INPUT_LEN 128
-#define MAX_CONFIG_LINE_LEN 512
-
-typedef struct {
-    char **items;
-    size_t count;
-} mac_list_t;
-
-typedef struct {
-    char *name;
-    char *mac;
-    char *broadcast_ip;
-    int port;
-} wake_target_t;
-
-typedef struct {
-    wake_target_t *items;
-    size_t count;
-} target_list_t;
 
 typedef struct {
     int prompt_enabled;
@@ -48,34 +27,13 @@ typedef struct {
     int smart_probe_interval_ms;
 } wake_send_options_t;
 
-/* Read a MAC address from $XDG_CONFIG_HOME or $HOME/.config fallback. */
-char *read_mac_from_config(void);
-
-/* Read all MAC addresses from config file (one per non-empty non-comment line). */
-int read_macs_from_config(mac_list_t *list);
-
-/* Read all wake targets from config file. */
-int read_targets_from_config(target_list_t *list);
-
-/* Release heap allocations created by read_targets_from_config. */
-void free_target_list(target_list_t *list);
-
-/* Release heap allocations created by read_macs_from_config. */
-void free_mac_list(mac_list_t *list);
-
-/* Read one MAC address from stdin (first non-empty non-comment line). */
+/* Read one MAC address from stdin. */
 int read_mac_from_stdin(char *mac_buf, size_t mac_buf_size);
 
 /* Validate canonical MAC form: XX:XX:XX:XX:XX:XX. */
 int validate_mac(const char *mac);
 
-/*
- * Normalize supported MAC forms into canonical uppercase colon format.
- * Supported inputs:
- * - XX:XX:XX:XX:XX:XX
- * - XX-XX-XX-XX-XX-XX
- * - XXXXXXXXXXXX
- */
+/* Normalize supported MAC forms into canonical uppercase colon format. */
 int normalize_mac(const char *input_mac, char *normalized_mac,
                   size_t normalized_size);
 
@@ -111,7 +69,7 @@ int send_wol_packet(const char *broadcast_ip, int port,
 int resolve_interface_broadcast(const char *ifname, char *out_broadcast,
                                 size_t out_size);
 
-/* Probe helpers for future smart-wake policy. */
+/* Probe helpers for smart-wake policy. */
 int probe_is_host_awake(const char *normalized_mac, const char *broadcast_ip,
                         int port, int timeout_ms);
 int probe_wait_for_host_awake(const char *normalized_mac,
@@ -122,9 +80,5 @@ int probe_wait_for_host_awake(const char *normalized_mac,
 int engine_process_target(const char *raw_mac, const char *broadcast_ip, int port,
                           const wake_send_options_t *options, int *had_error,
                           int *sent_count);
-
-/* Unit test entry points. */
-void test_validation(void);
-void test_config_read(void);
 
 #endif

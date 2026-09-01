@@ -2,9 +2,9 @@ CC = gcc
 CFLAGS = -Wall -Werror -std=c99 -D_POSIX_C_SOURCE=200809L -I./src -g
 BUILD_DIR = build
 SRC_DIR = src
-SRC_CORE = $(SRC_DIR)/config.c $(SRC_DIR)/validate.c $(SRC_DIR)/packet.c $(SRC_DIR)/net.c $(SRC_DIR)/cli.c $(SRC_DIR)/engine.c $(SRC_DIR)/probe.c
+SRC_CORE = $(SRC_DIR)/validate.c $(SRC_DIR)/packet.c $(SRC_DIR)/net.c $(SRC_DIR)/cli.c $(SRC_DIR)/engine.c $(SRC_DIR)/probe.c
 APP_SRCS = $(SRC_DIR)/main.c $(SRC_CORE)
-TEST_SRCS = tests/test.c $(SRC_DIR)/config.c $(SRC_DIR)/validate.c $(SRC_DIR)/packet.c $(SRC_DIR)/net.c $(SRC_DIR)/cli.c $(SRC_DIR)/engine.c $(SRC_DIR)/probe.c
+TEST_SRCS = tests/test.c $(SRC_CORE)
 TEST_BIN = $(BUILD_DIR)/wall-c-test
 SAN_TEST_BIN = $(BUILD_DIR)/wall-c-test-sanitize
 RELEASE_BIN = $(BUILD_DIR)/wall-c-release
@@ -13,8 +13,6 @@ SANITIZE_FLAGS = -fsanitize=address,undefined -fno-omit-frame-pointer
 INTEGRATION_TEST = sh ./tests/integration_test.sh
 VALGRIND = valgrind
 VALGRIND_FLAGS = --leak-check=full --show-leak-kinds=all --track-origins=yes --verbose
-LEAKS = leaks
-LEAKS_FLAGS = --atExit --
 PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin
 MANDIR ?= $(PREFIX)/share/man
@@ -22,7 +20,6 @@ ZSH_COMPLETION_DIR ?= $(PREFIX)/share/zsh/site-functions
 FISH_COMPLETION_DIR ?= $(PREFIX)/share/fish/vendor_completions.d
 INSTALL ?= install
 
-# Detect OS
 UNAME_S := $(shell uname -s)
 
 all: wall-c
@@ -57,42 +54,13 @@ $(SAN_TEST_BIN): $(TEST_SRCS)
 sanitize: $(SAN_TEST_BIN)
 	./$(SAN_TEST_BIN)
 
-# Memory leak checking - uses appropriate tool based on OS
 memcheck: $(TEST_BIN)
 ifeq ($(UNAME_S),Darwin)
-	@echo "========================================="
-	@echo "  Memory Leak Analysis (macOS)"
-	@echo "========================================="
-	@echo ""
-	@echo "→ Running tests with malloc stack logging enabled..."
-	@MallocStackLogging=1 ./$(TEST_BIN) 2>&1 | sed 's/^/  │ /'
-	@echo ""
-	@echo "→ Analyzing memory allocations..."
-	@if leaks $(notdir $(TEST_BIN)) 2>&1 | grep -q "cannot find"; then \
-		echo "  │ ✓ Process exited cleanly (short-lived test process)"; \
-		echo "  │ ℹ  For long-running processes, use: leaks <pid>"; \
-	else \
-		leaks $(notdir $(TEST_BIN)) 2>&1 | sed 's/^/  │ /'; \
-	fi
-	@echo ""
-	@echo "========================================="
-	@echo "  Analysis Complete"
-	@echo "========================================="
+	MallocStackLogging=1 ./$(TEST_BIN)
 else
-	@echo "========================================="
-	@echo "  Memory Leak Analysis (Valgrind)"
-	@echo "========================================="
-	@echo ""
-	@$(VALGRIND) $(VALGRIND_FLAGS) ./$(TEST_BIN) 2>&1 | \
-		sed 's/^==[0-9]*==/  [valgrind]/' | \
-		sed 's/^/  /'
-	@echo ""
-	@echo "========================================="
-	@echo "  Analysis Complete"
-	@echo "========================================="
+	$(VALGRIND) $(VALGRIND_FLAGS) ./$(TEST_BIN)
 endif
 
-# Keep valgrind target for explicit use on Linux
 valgrind: $(TEST_BIN)
 	$(VALGRIND) $(VALGRIND_FLAGS) ./$(TEST_BIN)
 

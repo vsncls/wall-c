@@ -1,35 +1,39 @@
 # AGENTS.md
 
-This file gives coding agents the minimum context needed to work safely and quickly in this repository.
+This file gives coding agents the minimum context needed to work safely in this repository.
 
 ## Project Scope
-- Project: `wall-c` (Wake-on-LAN CLI in C99)
-- Primary code: `src/*.c`, shared declarations in `src/wall.h`
-- Tests:
-  - Unit tests: `tests/test.c`
-  - CLI integration script: `tests/integration_test.sh`
-- Build systems:
-  - Make: `Makefile`
-  - Zig build wrapper: `build.zig`
+
+- Project: `wall-c` — small Wake-on-LAN CLI in C99.
+- Primary code: `src/*.c`, declarations in `src/wall.h`.
+- Tests: `tests/test.c` and `tests/integration_test.sh`.
+- Build systems: `Makefile` and `build.zig`.
+- Formal-verification experiment: `proof-plan.md`.
 
 ## Ground Rules
-- Keep changes tightly scoped to the user request.
-- Add and maintain very thorough comments aimed at beginner human coders when writing or changing code.
-- Do not introduce new dependencies unless explicitly requested.
-- Preserve current CLI behavior and flag compatibility unless asked to change it.
-- Prefer small, reviewable patches over broad refactors.
+
+- Keep changes tightly scoped.
+- Prefer deletion and explicit data flow over new persistent state or parser layers.
+- Do not reintroduce a configuration-file/target-database feature without an explicit design decision.
+- Do not introduce new dependencies unless requested and justified.
+- Preserve current CLI behavior unless the task explicitly changes it.
+- Prefer small, reviewable changes over broad refactors.
+- Keep comments useful to a human reader; do not comment obvious syntax.
 
 ## Platform Targets
-- Treat support targets as:
-  - macOS (Apple Silicon ARM64 + Intel x86_64)
-  - Linux (ARM64 + x86_64)
-- Avoid changes that are platform-specific unless guarded and justified.
-- For behavior changes in networking/process APIs, verify assumptions on both macOS and Linux code paths.
+
+Treat support targets as:
+
+- macOS: Apple Silicon ARM64 and Intel x86_64;
+- Linux: ARM64 and x86_64.
+
+Guard and justify platform-specific behavior. Networking/process API changes must consider both Linux and macOS paths.
 
 ## Build & Test
-Use these commands from repo root:
 
-```bash
+From repository root:
+
+```sh
 make
 make test
 make test-integration
@@ -37,16 +41,11 @@ make test-all
 make sanitize
 ```
 
-Optional checks:
+Optional:
 
-```bash
+```sh
 make release
 make memcheck
-```
-
-Zig equivalents:
-
-```bash
 zig build
 zig build test
 zig build sanitize
@@ -54,42 +53,48 @@ zig build release
 ```
 
 ## Coding Conventions
-- Language standard: C99 (`-std=c99`), POSIX APIs (`-D_POSIX_C_SOURCE=200809L`).
-- Compiler warnings are strict (`-Wall -Werror`): keep code warning-free.
-- Match existing style in touched files:
-  - Keep includes and helpers local to where used.
-  - Prefer clear, explicit control flow.
-  - Avoid single-letter names except short loop indices.
-- Do not add header/API surface unless needed for the task.
 
-## Testing Expectations For Changes
-- Behavior changes in parsing, CLI, networking, or validation should include test updates.
-- For CLI-facing changes, update integration coverage in `tests/integration_test.sh` when applicable.
-- If command output/help text changes, ensure tests and docs (`README.md`, `man/wall-c.1`, completions) stay aligned.
+- C99: `-std=c99`.
+- POSIX feature set: `-D_POSIX_C_SOURCE=200809L`.
+- Warnings are strict: `-Wall -Werror`.
+- Prefer clear explicit control flow and fixed-size data where practical.
+- Avoid new heap ownership unless it materially simplifies or enables required behavior.
+- Avoid process-spawning/execution APIs in `src/`.
+- Do not add public header/API surface without need.
+
+## Testing Expectations
+
+- Validation or input changes require unit coverage.
+- CLI/network behavior changes require integration coverage when practical.
+- Changes to help/output must keep `README.md`, `man/wall-c.1`, and completions aligned.
+- Memory-sensitive changes should keep sanitizer CI green.
 
 ## High-Risk Areas
-Treat these as sensitive and verify with tests after edits:
-- Packet formatting and send path: `src/packet.c`, `src/net.c`
-- CLI parsing and defaults: `src/cli.c`
-- Config parsing and target selection: `src/config.c`, `src/engine.c`
-- Validation logic: `src/validate.c`
 
-## Documentation Sync
-When user-visible behavior changes, update the relevant docs in the same change set:
-- `README.md`
-- `man/wall-c.1`
-- Shell completions in `completions/`
+Verify carefully after edits:
+
+- packet formatting: `src/packet.c`;
+- CLI/input handling: `src/main.c`, `src/cli.c`;
+- validation/parsing: `src/validate.c`;
+- networking/interface resolution: `src/net.c`;
+- smart probing and platform-specific memory parsing: `src/probe.c`;
+- send orchestration: `src/engine.c`.
+
+## Formal Verification Discipline
+
+The proof experiment must bind results to exact source bytes. Do not describe a handwritten Lean rewrite as proof of the C implementation. Keep source proof, CompCert preservation, and reproducible-build claims separate. Update `proof-plan.md` when source simplification materially changes the proof surface.
 
 ## TODO Tracking
-- Keep `TODO.md` as the canonical task list for repository work.
-- When starting meaningful implementation work, add or update an item in `TODO.md`.
-- Mark completed items clearly and avoid deleting historical context unless the user requests cleanup.
-- If a task spans multiple commits, keep progress notes short and current in `TODO.md`.
+
+Keep `TODO.md` as the canonical current task list. Do not use it as a permanent changelog.
 
 ## Pre-Completion Checklist
-Before finishing a task, agents should:
-1. Build successfully.
-2. Run relevant tests for the touched area (at minimum `make test`; add integration/sanitize as needed).
-3. Confirm no unintended file changes.
-4. Confirm the change remains compatible with macOS/Linux on ARM64 and x86_64 (or document any gap).
-5. Summarize what changed, why, and any residual risks.
+
+Before finishing a code change:
+
+1. build successfully;
+2. run relevant unit/integration/sanitizer checks;
+3. confirm no unintended files changed;
+4. consider Linux/macOS and ARM64/x86_64 implications;
+5. synchronize user-facing docs/completions;
+6. state residual risks or unvalidated platform gaps.

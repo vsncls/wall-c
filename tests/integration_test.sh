@@ -20,15 +20,6 @@ if [ ! -x "$BIN_PATH" ]; then
     exit 1
 fi
 
-TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/wall-c-int-test.XXXXXX")"
-cleanup() {
-    rm -rf "$TEST_ROOT"
-}
-trap cleanup EXIT INT TERM
-
-export XDG_CONFIG_HOME="$TEST_ROOT/xdg"
-mkdir -p "$XDG_CONFIG_HOME"
-
 run_case() {
     expected_exit="$1"
     description="$2"
@@ -67,17 +58,11 @@ run_case 0 "dry-run succeeds for valid MAC" \
     "$BIN_PATH" --mac "AA:BB:CC:DD:EE:FF" --dry-run --count 2 --interval-ms 0 -y
 run_case 0 "smart dry-run succeeds for valid MAC" \
     "$BIN_PATH" --mac "AA:BB:CC:DD:EE:FF" --smart --dry-run -y
-
-mkdir -p "$XDG_CONFIG_HOME/wall-c"
-printf "nas AA:BB:CC:DD:EE:FF 192.168.1.255 9\nAA:BB:CC:DD:EE:11\n" > "$XDG_CONFIG_HOME/wall-c/config"
-run_case 0 "list-targets exits successfully" "$BIN_PATH" --list-targets
-run_case 0 "named target dry-run succeeds" "$BIN_PATH" --target "nas" --dry-run -y
-run_case 1 "missing named target exits with failure" "$BIN_PATH" --target "does-not-exist" -y
 # shellcheck disable=SC2016
-run_case 1 "stdin MAC takes precedence over config when stdin MAC is invalid" \
-    sh -c 'printf "not-a-mac\n" | "$1" -y' _ "$BIN_PATH"
-
-printf "AA:BB:CC:DD:EE:FF\nnot-a-mac\n" > "$XDG_CONFIG_HOME/wall-c/config"
-run_case 1 "config list fails on invalid line in dry-run mode" "$BIN_PATH" --dry-run -y
+run_case 0 "stdin MAC succeeds" \
+    sh -c 'printf "AA:BB:CC:DD:EE:FF\n" | "$1" --dry-run -y' _ "$BIN_PATH"
+# shellcheck disable=SC2016
+run_case 1 "invalid stdin MAC fails" \
+    sh -c 'printf "not-a-mac\n" | "$1" --dry-run -y' _ "$BIN_PATH"
 
 echo "${C_GREEN}All CLI integration tests passed.${C_RESET}"

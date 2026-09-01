@@ -2,59 +2,35 @@
 
 ### Completed (Recent)
 
-- [x] Documentation quality:
-- [x] Expanded beginner-focused explanatory comments across `src/*.c` without behavior changes.
+- [x] Keep the runtime dependency-light C99/POSIX.
+- [x] Support explicit MAC input through `-m` / `--mac` and one-line stdin.
+- [x] Support broadcast override, interface-derived broadcast, port, repeat count, and repeat interval.
+- [x] Support `--dry-run`, `--quiet`, `--smart`, and non-interactive `-y` operation.
+- [x] Add unit tests, CLI integration tests, ASan/UBSan CI, shell lint, and Linux/macOS compiler matrices.
+- [x] Add Make and Zig build paths, install/uninstall, man page, and zsh/fish completions.
+- [x] Remove configuration-file support, named-target parsing, config discovery, dynamic target lists, `--target`, `--list-targets`, and `--continue-on-error` to reduce runtime and verification attack surface.
 
-- [x] CLI 2.0:
-- [x] Added long flags (`--mac`, `--broadcast`, `--port`, `--yes`, `--help`, `--version`).
-- [x] Added automation flags (`--dry-run`, `--quiet`).
-- [x] Added batch controls (`--count`, `--interval-ms`, `--continue-on-error`).
-- [x] Host targets:
-- [x] Added named config target format (`NAME MAC [BROADCAST_IP] [PORT]`).
-- [x] Added `--target <name>` and `--list-targets`.
-- [x] Network usability:
-- [x] Added `--interface <ifname>` broadcast resolution.
-- [x] Packaging:
-- [x] Added `make install` / `make uninstall`.
-- [x] Added man page at `man/wall-c.1`.
-- [x] Added zsh/fish completion delivery via install target.
-- [x] Testing/CI:
-- [x] Expanded unit + integration tests for new CLI/config behavior.
-- [x] Added sanitizer CI coverage on Ubuntu + macOS.
-- [x] Added shell lint job for `tests/integration_test.sh`.
-- [x] Docs:
-- [x] Updated `README.md` for new options, config format, install flow, and troubleshooting.
+### Formal Verification PoC
 
-### Formal Verification Proof of Concept
-
-`wall-c` is the sole verification target for this phase. The purpose is to prove
-that the complete method works on a small real C program before considering any
-larger or more security-critical target.
+`wall-c` is the only verification target for this phase. See `proof-plan.md`.
 
 - [ ] Generate and commit `flake.lock`; validate `nix flake check` on Nix-capable macOS/Linux hosts.
-- [ ] Confirm the pinned CompCert package can compile the current `wall-c` C subset.
+- [ ] Confirm pinned CompCert can compile the simplified `wall-c` subset used by the first proof target.
 - [ ] Create the Lean 4 proof project.
-- [ ] Mechanically import the actual `build_magic_packet` C function.
-- [ ] Prove its exact memory bounds and 102-byte packet layout from the imported source.
-- [ ] Bind that theorem to exact source bytes/hashes so stale proofs fail closed.
-- [ ] Record `#print axioms` for the first source-bound theorem.
-- [ ] Establish an explicit checked relation between the Lean C representation and the CompCert input used for that function/program fragment.
-- [ ] Compile through pinned CompCert and record generated assembly hashes.
-- [ ] Rebuild independently under the pinned Nix environment and compare artifact hashes.
-- [ ] Only after this PoC gate succeeds, continue to validation/parser contracts and `config.c` ownership proofs.
-- [ ] Prove whole-program `wall-c` memory safety if the PoC architecture remains tractable.
-
-See `proof-plan.md` for theorem scope, trusted boundaries, PoC exit criteria, and
-whole-program milestones.
+- [ ] Mechanically import the exact C implementation of `build_magic_packet`.
+- [ ] Bind the imported representation to exact source hashes.
+- [ ] Prove memory safety and exact 102-byte packet layout.
+- [ ] Record `#print axioms` and all explicit assumptions.
+- [ ] Establish a checked Lean-semantics ↔ CompCert correspondence for the first function.
+- [ ] Reproduce assembly/artifact hashes under locked Nix inputs.
+- [ ] Only after the end-to-end PoC works, expand module-by-module toward whole-program `wall-c` memory safety.
 
 ### Next Candidates
 
-- [ ] Smart option with homegrown arping to a. avoid waking if already up and b. loop retry with a timeout while waiting for arpong
-- [ ] Add `--timeout-ms` for send retry pacing in unstable environments.
-- [ ] Add interface-selection completion hints for fish from live interfaces.
+Keep feature work conservative while verification is underway. Any new parser, persistence layer, dynamic target database, or process-execution surface needs a strong justification.
 
 ### Done Criteria
 
-- [ ] CI green on macOS + Linux for ARM64 and x86_64 after merge.
+- [ ] CI green on supported Linux/macOS compiler targets after each change.
 - [ ] Sanitizer jobs remain zero findings.
-- [ ] Release workflow validated on first `v*` tag.
+- [ ] Release workflow validated on the next `v*` tag.
