@@ -25,6 +25,17 @@
 - [ ] Reproduce assembly/artifact hashes under locked Nix inputs.
 - [ ] Only after the end-to-end PoC works, expand module-by-module toward whole-program `wall-c` memory safety.
 
+### `doas` Verification Incubation
+
+Planning only while the generic verified-C substrate is being proved on `wall-c`.
+
+- [ ] Keep reusable C-memory/libc/syscall proof infrastructure application-independent.
+- [ ] Check whether the selected C importer covers the OpenBSD `doas` language subset.
+- [ ] Investigate `parse.y` correspondence separately from the C memory-safety path.
+- [ ] Move to a dedicated `doas-verify` repository once one real `wall-c` C function is mechanically imported/proved and the generic C-semantics boundary is stable.
+
+See `doas-verification-plan.md` for the source pin, theorem stack, provenance model, OpenBSD boundaries, and migration trigger.
+
 ### Next Candidates
 
 Keep feature work conservative while verification is underway. Any new parser, persistence layer, dynamic target database, or process-execution surface needs a strong justification.
