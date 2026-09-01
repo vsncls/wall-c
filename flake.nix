@@ -2,9 +2,10 @@
   description = "wall-c reproducible build and Lean/CompCert verification environment";
 
   inputs = {
-    # flake.lock is the actual reproducibility pin. Keep this on a release branch
-    # rather than an unbounded nixpkgs channel once the first lock is generated.
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+    # NixOS 26.11 is the intended release baseline, but its nixpkgs release
+    # branch has not been cut yet. Track unstable for now; flake.lock remains
+    # the actual immutable pin. Switch this URL to nixos-26.11 once available.
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
   };
 
   outputs = { self, nixpkgs }:
