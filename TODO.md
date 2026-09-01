@@ -25,27 +25,27 @@
 - [x] Docs:
 - [x] Updated `README.md` for new options, config format, install flow, and troubleshooting.
 
-### Formal Verification
+### Formal Verification Proof of Concept
+
+`wall-c` is the sole verification target for this phase. The purpose is to prove
+that the complete method works on a small real C program before considering any
+larger or more security-critical target.
 
 - [ ] Generate and commit `flake.lock`; validate `nix flake check` on Nix-capable macOS/Linux hosts.
 - [ ] Confirm the pinned CompCert package can compile the current `wall-c` C subset.
-- [ ] Create the Lean 4 proof project and mechanically import `build_magic_packet` first.
-- [ ] Prove exact packet bounds/layout, then validation/parser contracts.
-- [ ] Prove `config.c` ownership invariants and add explicit allocation-overflow guards where required.
-- [ ] Establish a checked Lean-semantics ↔ CompCert-C correspondence before making compiled-artifact claims.
-- [ ] Add independent Nix rebuild/hash comparison for assembly and executable artifacts.
+- [ ] Create the Lean 4 proof project.
+- [ ] Mechanically import the actual `build_magic_packet` C function.
+- [ ] Prove its exact memory bounds and 102-byte packet layout from the imported source.
+- [ ] Bind that theorem to exact source bytes/hashes so stale proofs fail closed.
+- [ ] Record `#print axioms` for the first source-bound theorem.
+- [ ] Establish an explicit checked relation between the Lean C representation and the CompCert input used for that function/program fragment.
+- [ ] Compile through pinned CompCert and record generated assembly hashes.
+- [ ] Rebuild independently under the pinned Nix environment and compare artifact hashes.
+- [ ] Only after this PoC gate succeeds, continue to validation/parser contracts and `config.c` ownership proofs.
+- [ ] Prove whole-program `wall-c` memory safety if the PoC architecture remains tractable.
 
-See `proof-plan.md` for theorem scope, trusted boundaries, and milestone details.
-
-### `doas` Verification Incubation
-
-- [x] Start `doas-verification-plan.md` with an exact OpenBSD upstream snapshot and proof goals.
-- [ ] Keep generic C/memory/libc/syscall proof machinery application-independent enough to migrate later.
-- [ ] Check whether the chosen C importer covers the constructs used by OpenBSD `doas`.
-- [ ] Investigate a mechanically checked strategy for `parse.y` / generated parser correspondence.
-- [ ] Move the effort into a dedicated `doas-verify` repository after the first mechanically source-bound `wall-c` function proof and a stable generic semantics boundary.
-
-The `doas` plan is deliberately incubated here only; it is not part of the `wall-c` verification claim.
+See `proof-plan.md` for theorem scope, trusted boundaries, PoC exit criteria, and
+whole-program milestones.
 
 ### Next Candidates
 
