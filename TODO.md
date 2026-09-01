@@ -37,6 +37,16 @@
 
 See `proof-plan.md` for theorem scope, trusted boundaries, and milestone details.
 
+### `doas` Verification Incubation
+
+- [x] Start `doas-verification-plan.md` with an exact OpenBSD upstream snapshot and proof goals.
+- [ ] Keep generic C/memory/libc/syscall proof machinery application-independent enough to migrate later.
+- [ ] Check whether the chosen C importer covers the constructs used by OpenBSD `doas`.
+- [ ] Investigate a mechanically checked strategy for `parse.y` / generated parser correspondence.
+- [ ] Move the effort into a dedicated `doas-verify` repository after the first mechanically source-bound `wall-c` function proof and a stable generic semantics boundary.
+
+The `doas` plan is deliberately incubated here only; it is not part of the `wall-c` verification claim.
+
 ### Next Candidates
 
 - [ ] Smart option with homegrown arping to a. avoid waking if already up and b. loop retry with a timeout while waiting for arpong
