@@ -1,18 +1,187 @@
-# Lean 4 memory-safety proof plan
+# Lean 4 / CompCert proof-of-concept plan for `wall-c`
 
 ## Status
 
 This is an engineering/research plan, not a claim that `wall-c` is already
 formally verified.
 
-The proof must bind itself to exact source bytes. The initial study target was
-commit `c3d4c2322425a013e182ea79804bdc059a104b25`; once proof-driven C changes land,
-the verified source revision and file hashes must be updated explicitly.
+`wall-c` is deliberately the **first and only verification target for this
+phase**. The objective is to prove that an end-to-end method can work on a small,
+real C99 program before applying it anywhere harder.
 
-## Primary goal
+The project should resist scope expansion until the proof-of-concept gate below
+has been crossed.
 
-Prove in Lean 4 that the actual `wall-c` C source is memory safe for all modeled
-executions satisfying explicit C-library and POSIX contracts.
+The proof must bind itself to exact source bytes. Any source change that affects
+verified code must invalidate the corresponding proof artifact until it is
+re-imported and rechecked.
+
+## Proof-of-concept objective
+
+The first objective is **not** whole-program verification.
+
+The first objective is to take one actual C function from `wall-c` all the way
+through this chain:
+
+```text
+exact wall-c source bytes
+        |
+        | hash / source binding
+        v
+mechanical C import
+        |
+        v
+formal Lean 4 representation + semantics
+        |
+        v
+kernel-checked safety + functional theorem
+        |
+        | checked semantic correspondence
+        v
+CompCert input representation
+        |
+        v
+CompCert verified compiler core
+        |
+        v
+assembly
+        |
+        | pinned assembler / linker / sysroot where applicable
+        v
+reproducible artifact under Nix
+```
+
+The chosen first function is:
+
+```c
+void build_magic_packet(const unsigned char *mac, unsigned char *packet);
+```
+
+It is ideal because it has:
+
+- a fixed 6-byte input;
+- a fixed 102-byte output;
+- one bounded loop;
+- `memset` and `memcpy` as the only relevant library memory operations;
+- a simple functional specification;
+- no allocation, files, sockets, environment, or error-handling complexity.
+
+If we cannot complete the method cleanly on this function, we should not expand
+the proof scope.
+
+## First theorem target
+
+The first source-bound theorem should establish both memory safety and packet
+correctness.
+
+Conceptually:
+
+```lean
+theorem build_magic_packet_safe_and_correct
+    (m0 m1 : Memory)
+    (mac packet : Ptr)
+    (hmac : Readable m0 mac 6)
+    (hpacket : Writable m0 packet 102)
+    (hexec : ExecCFunction buildMagicPacketC m0 [mac, packet] m1) :
+    MemorySafeExecution hexec ∧
+    PacketRegion m1 packet =
+      (Array.replicate 6 0xff) ++
+      Array.flatten (Array.replicate 16 (ReadBytes m0 mac 6))
+```
+
+The exact theorem shape will depend on the chosen C semantics, but the claim
+must include at least:
+
+- exactly six readable input bytes are sufficient;
+- exactly 102 writable output bytes are sufficient;
+- every C read/write performed by the function is in bounds;
+- the first six output bytes are `0xff`;
+- the following 96 bytes are sixteen repetitions of the input MAC;
+- no memory outside the destination region is modified;
+- the theorem is attached to a mechanically imported representation of the
+  actual C source, not merely a handwritten Lean equivalent.
+
+## Proof-of-concept gate
+
+The proof of concept is complete only when **all** of the following are true.
+
+### A. Source binding
+
+- the exact source file bytes are hashed;
+- the imported C representation is generated from those bytes;
+- CI fails if verified source changes without regenerating/rechecking the proof;
+- the theorem cannot silently continue proving stale code.
+
+### B. Lean theorem
+
+- `build_magic_packet` is mechanically imported;
+- Lean proves its memory safety under explicit pointer-size preconditions;
+- Lean proves the 102-byte packet layout;
+- `#print axioms` is recorded for the top-level theorem;
+- all non-standard assumptions are documented.
+
+### C. Compiler bridge
+
+- the representation proved in Lean is explicitly related to the C program fed
+  to CompCert;
+- that relation is mechanically checked or proved, not asserted by human
+  inspection;
+- the exact CompCert version and flags are pinned;
+- generated assembly is hashed.
+
+### D. Reproducibility
+
+- `flake.lock` pins all Nix inputs;
+- the relevant build succeeds from the flake;
+- two independent builds from identical locked inputs produce identical
+  assembly/artifact hashes, or any unavoidable nondeterminism is isolated and
+  documented;
+- reproducibility is described separately from semantic correctness.
+
+Only after A–D succeed should the project expand toward proving the rest of
+`wall-c`.
+
+## Claims we must keep separate
+
+Three properties are related but not interchangeable:
+
+1. **Lean source theorem** — the modeled/imported C execution is memory safe and
+   functionally correct under stated contracts;
+2. **compiler correctness** — CompCert preserves the relevant source semantics
+   through its verified compiler passes;
+3. **reproducible build** — identical pinned build inputs produce identical
+   output bits.
+
+Nix helps with 3. CompCert helps with 2. Lean is used for 1 and for the bridge we
+need between our source representation and CompCert's semantics.
+
+A reproducible wrong compiler would still produce the same wrong binary.
+A verified source theorem with an unchecked source-import bridge would still be
+weaker than desired. These boundaries must remain visible.
+
+## Why `wall-c`
+
+`wall-c` is a good proof-of-concept target because it is small but not synthetic:
+
+- ordinary C99;
+- multiple translation units;
+- fixed-size stack buffers;
+- dynamic allocation and ownership in `config.c`;
+- string parsing;
+- libc usage;
+- POSIX files/environment;
+- networking;
+- explicit error paths;
+- existing GCC/Clang, sanitizer and integration testing;
+- no threads.
+
+It lets us begin with an extremely small function and then increase proof
+complexity without changing projects.
+
+## Scope after the proof-of-concept gate
+
+If the first end-to-end function succeeds, the next goal is whole-program
+`wall-c` memory safety.
 
 Conceptually:
 
@@ -27,177 +196,47 @@ theorem wall_c_memory_safe
 
 `HasMemoryUB` should cover at least:
 
-- out-of-bounds reads and writes;
-- null/invalid pointer dereferences;
+- out-of-bounds reads/writes;
+- invalid/null dereferences;
 - use-after-free;
-- double-free and invalid free;
+- double-free / invalid free;
 - uninitialized reads where C makes them undefined;
 - invalid overlap for operations such as `memcpy`;
-- allocation-size arithmetic overflow leading to undersized objects;
+- allocation-size arithmetic overflow producing undersized objects;
 - lifetime/provenance violations represented by the chosen model.
 
-Heap leaks are a separate theorem:
+Heap leaks are a separate property:
 
 ```lean
 theorem wall_c_no_owned_heap_leaks_on_normal_exit :
   NormalTermination e → AllWallOwnedAllocationsReleased e
 ```
 
-## Proof levels
+Do not conflate memory safety with absence of leaks.
 
-### Level 1 — Lean model
+## Non-goals for this repository phase
 
-Reimplement relevant algorithms as Lean functions and prove them correct.
-Useful for discovering invariants, but insufficient as the final claim because
-the C/Lean correspondence would remain unproved.
+Until the `wall-c` proof of concept and, ideally, the whole-program theorem are
+complete, do not expand this repository into another application's verification
+workspace.
 
-### Level 2 — actual C source — primary target
+The current phase does not attempt to prove:
 
-Mechanically parse the actual C source into an AST, give the exercised C
-fragment formal semantics in Lean, and prove memory safety of that AST.
+- the operating-system kernel;
+- correctness of libc implementations beyond explicit contracts;
+- network hardware or remote Wake-on-LAN behavior;
+- arbitrary GCC/Clang correctness;
+- absence of hardware faults;
+- all possible classes of C undefined behavior unless required by the stated
+  theorem.
 
-A handwritten Lean transcription may assist development, but must not be the
-sole bridge used by the final theorem.
+Future verification targets belong in separate projects after this method has
+been demonstrated.
 
-### Level 3 — compiled artifact — active secondary target
+## Lean architecture
 
-Carry the source result toward assembly through CompCert, inside a hermetic Nix
-build. This is now part of the plan rather than a vague future possibility, but
-it remains a distinct theorem boundary.
-
-The intended chain is:
-
-```text
-pinned wall-c source
-        |
-        | source hashes
-        v
-Lean C importer / AST
-        |
-        v
-Lean C-fragment semantics
-        |
-        v
-Lean memory-safety theorem
-        |
-        | semantic bridge to CompCert C semantics
-        v
-CompCert verified compiler core
-        |
-        v
-assembly
-        |
-        | pinned assembler/linker/sysroot
-        v
-reproducible executable
-```
-
-The difficult research seam is not primarily compilation itself; it is the
-relationship between the Lean semantics and CompCert's Rocq/Coq semantics.
-
-## Determinism and reproducibility
-
-Do not equate three different claims:
-
-1. **source proof** — Lean proves the modeled C program memory safe;
-2. **compiler correctness** — CompCert proves semantic preservation through its
-   verified compiler passes;
-3. **reproducible build** — identical pinned inputs produce identical output
-   bits.
-
-Nix addresses the third property, not the first two.
-
-The repository therefore contains a draft `flake.nix` intended to pin:
-
-- nixpkgs;
-- CompCert;
-- Lean 4;
-- ordinary C compilers used for differential/sanitizer testing;
-- build environment variables affecting reproducibility.
-
-The generated `flake.lock` is the actual immutable input pin and must be
-committed before reproducibility is claimed.
-
-A future CI reproducibility check should build from the same lockfile in two
-independent builders and compare output hashes.
-
-## CompCert boundary
-
-CompCert is attractive because its verified compiler core proves preservation
-of source semantics through compilation to assembly for supported targets.
-
-However, the full invocation pipeline still has external seams such as
-preprocessing, parsing/front-end machinery, assembly and linking. These must be
-listed explicitly rather than absorbed into a vague "verified compiler" claim.
-
-The preferred verification pipeline is therefore:
-
-```text
-exact C source
-   |
-   +--> exact preprocessed source, if preprocessing is retained
-   |       hash this artifact
-   v
-formal source semantics
-   |
-   +--> Lean theorem
-   |
-   +--> semantic correspondence with CompCert representation
-   v
-CompCert generated assembly
-   |
-   +--> hash
-   v
-pinned assembler + linker + sysroot
-   |
-   +--> hash
-   v
-executable
-```
-
-Whenever possible, reduce preprocessing complexity and compiler-specific
-extensions in `wall-c` rather than broadening the formal front end.
-
-## Why `wall-c` is a suitable target
-
-The program is unusually tractable for this experiment:
-
-- small C99 codebase;
-- sequential control flow;
-- no threads;
-- explicit ownership cleanup helpers;
-- fixed-size packet buffers;
-- very limited pointer arithmetic;
-- bounded packet construction;
-- narrow POSIX/network boundary;
-- existing unit, integration, ASan and UBSan tests.
-
-The most interesting ownership work remains `src/config.c`, particularly list
-growth, `realloc`, partial construction and cleanup.
-
-## Lean proof architecture
-
-```text
-actual wall-c C source
-        |
-        v
-mechanical parser / AST
-        |
-        v
-formal C fragment semantics
-        |
-        +--> libc contracts
-        +--> POSIX contracts
-        |
-        v
-per-function proofs
-        |
-        v
-ownership/module invariants
-        |
-        v
-whole-program memory-safety theorem
-```
+The proof code should be generic where practical, but its only immediate client
+is `wall-c`.
 
 Proposed layout:
 
@@ -211,20 +250,20 @@ proof/
     Hoare.lean
 
     LibC/
-      Alloc.lean
-      CString.lean
       MemoryOps.lean
+      CString.lean
+      Alloc.lean
       Stdio.lean
       Parse.lean
 
     Posix/
+      Environment.lean
       Socket.lean
       Time.lean
-      Environment.lean
 
     Wall/
-      Validate.lean
       Packet.lean
+      Validate.lean
       Config.lean
       Cli.lean
       Net.lean
@@ -239,32 +278,42 @@ proof/
     Theorems.lean
 ```
 
-## C fragment to model
+Do not over-generalize the framework before the first theorem exists. Reusable
+abstractions should be extracted only when the `wall-c` proof demonstrates a
+real need.
 
-Do not formalize all of ISO C up front. Model only the fragment actually used:
+## C fragment strategy
 
-- integer and character scalar types;
-- arrays and structs;
-- pointers/null;
-- stack and heap objects;
-- address-of/dereference;
-- field and array access;
-- pointer arithmetic used by the program;
-- assignments;
-- conditionals;
-- loops;
-- function calls/returns;
-- casts used in source;
-- `sizeof`;
-- relevant integer-conversion behavior;
-- allocation failure paths.
+Do not formalize ISO C wholesale.
 
-Unsupported syntax must make source import fail loudly.
+For the first theorem we only need a very small fragment:
+
+- function arguments;
+- byte pointers;
+- integer loop variable;
+- pointer arithmetic used by `packet.c`;
+- function calls;
+- `memset`;
+- `memcpy`;
+- bounded `for` loop;
+- integer arithmetic required for offsets.
+
+Unsupported syntax must fail import loudly.
+
+As verification expands, add only the constructs exercised by the next
+`wall-c` module.
 
 ## Memory model
 
-At minimum the model must represent live allocations, sizes, writeability and
-initialization state. Pointer provenance may require a richer representation.
+The model must at least represent:
+
+- live allocations/objects;
+- object size;
+- readability/writability;
+- initialization state where relevant;
+- pointer offset validity;
+- enough provenance/lifetime information to make the selected memory-safety
+  theorem meaningful.
 
 Useful predicates include:
 
@@ -277,127 +326,72 @@ Owns       : Memory → Owner → Ptr → Prop
 Disjoint   : PtrRange → PtrRange → Prop
 ```
 
-Every modeled load/store and library memory operation should expose the
-necessary proof obligations through these predicates.
+For the first proof, `Readable`, `Writable`, pointer offsets and modified-region
+reasoning are sufficient. Avoid designing the entire eventual heap model before
+that theorem checks.
 
-## Library and POSIX contracts
+## Library contracts for the first proof
 
-Do not initially formalize complete libc implementations. Give each used
-operation a precise contract.
+### `memset`
 
-### `malloc`
-
-Success returns a fresh live allocation of at least the requested size. Failure
-returns null without modifying existing allocations.
-
-### `realloc`
-
-Success/failure behavior and ownership transfer must be modeled precisely. A
-failed non-zero-size `realloc` preserves the original allocation.
-
-### `strlen`
-
-Requires a readable NUL-terminated byte string and returns the first NUL offset.
+Given a writable destination range of length `n`, writes exactly `n` bytes and
+leaves memory outside that range unchanged.
 
 ### `memcpy`
 
-Requires readable source, writable destination and non-overlap as required by C.
+Given a readable source range and writable non-overlapping destination range of
+length `n`, copies exactly those bytes and leaves memory outside the destination
+range unchanged.
 
-### `memmove`
+These contracts must be explicit theorem assumptions or proved library lemmas,
+not informal comments.
 
-Requires readable source and writable destination but permits overlap.
+## CompCert boundary
 
-### `snprintf`
+CompCert does not remove the need to define our trust boundary.
 
-Model enough behavior to prove bounds and termination for the fixed format
-strings used by `wall-c`.
+The project must identify separately:
 
-### POSIX/network operations
+- preprocessing;
+- C parsing/front-end representation;
+- the verified compiler core;
+- assembly;
+- linking;
+- runtime/sysroot.
 
-Socket, file, environment and time calls may initially be nondeterministic
-operations satisfying explicit memory contracts. Kernel/network correctness is
-outside the source memory-safety theorem.
+The hard research question for the PoC is the **Lean semantics ↔ CompCert C
+semantics** relationship.
 
-## Function proof order
+The bridge must answer:
 
-### 1. `build_magic_packet`
+> Is the exact program Lean proved the same program, in the relevant semantic
+> sense, that CompCert compiles?
 
-First complete end-to-end proof.
+Until that question has a checked answer, the Lean theorem and the CompCert
+compiler theorem remain adjacent results rather than one end-to-end proof.
 
-Preconditions:
+## Nix/reproducibility plan
 
-- `mac` provides at least 6 readable bytes;
-- `packet` provides at least 102 writable bytes.
+`flake.nix` defines the desired environment; `flake.lock` is the actual immutable
+input pin.
 
-Postconditions:
+The environment should pin or expose:
 
-- only that destination region is modified;
-- bytes 0..5 are `0xff`;
-- bytes 6..101 are sixteen repetitions of the six MAC bytes;
-- every access is in bounds.
+- Lean 4 / Lake;
+- CompCert;
+- GCC and Clang for differential testing;
+- the ordinary build dependencies;
+- build environment variables that would otherwise inject timestamps, paths or
+  host-specific state.
 
-### 2. MAC validation pipeline
+Eventually CI should perform an independent rebuild/hash comparison.
 
-Prove contracts for `validate_mac`, `normalize_mac` and `parse_mac`.
-Caller-only assumptions must be stated explicitly rather than hidden in the
-model.
+Do not claim reproducibility before the lockfile is committed and the comparison
+has actually passed.
 
-### 3. Configuration ownership
+## Existing dynamic validation
 
-Define invariants for `mac_list_t` and `target_list_t` and prove:
-
-- successful append preserves them;
-- failed `realloc` cannot lose the previous allocation;
-- ownership transfer happens exactly once;
-- partial failures release what they own;
-- list cleanup frees every owned object exactly once.
-
-### 4. Input parsing
-
-Prove all stack/input buffer accesses and copies remain bounded, including
-truncation/error paths.
-
-### 5. Engine
-
-Compose validation, parse and packet contracts. Establish exact stack-array
-capacities at every call site.
-
-### 6. Network/probe/CLI boundaries
-
-Prove local memory safety while treating external calls under explicit POSIX
-contracts.
-
-### 7. `main`
-
-Compose all paths and prove whole-program memory safety plus the desired cleanup
-properties.
-
-## Expected proof-driven C hardening
-
-Formalization is allowed to reveal small C changes. Such findings should be
-separate, reviewable commits with tests.
-
-Known obligations include:
-
-1. **Null/string preconditions** — some helpers call string functions before
-   checking pointer arguments. Either prove callers establish validity or add a
-   defensive check.
-
-2. **Allocation-size overflow** — expressions such as
-   `sizeof(T) * (count + 1)` need a mathematical bound or an explicit runtime
-   overflow guard before `realloc`.
-
-3. **Parser contracts** — helpers such as MAC parsing assume minimum readable
-   input length and destination capacity. Make that contract explicit and prove
-   it at every caller.
-
-4. **CompCert compatibility** — any source construct outside the supported
-   CompCert subset should be simplified where doing so does not degrade the
-   program.
-
-## Validation alongside proof
-
-Keep existing dynamic validation:
+Formal work should preserve the ordinary engineering checks:
 
 ```sh
 make
@@ -406,7 +400,7 @@ make test-integration
 make sanitize
 ```
 
-The Nix environment should eventually add:
+and later:
 
 ```sh
 nix flake check
@@ -414,131 +408,162 @@ nix build
 nix develop .#proof
 ```
 
-Finite vectors generated from Lean specifications may be compared against the C
-binary as a differential sanity check. Differential testing is not the proof.
+Sanitizers and differential tests are useful oracles for proof/model mistakes,
+but they are not evidence replacing the theorem.
+
+## Proof-driven C hardening
+
+The proof may reveal places where a tiny C change substantially simplifies or
+strengthens the contract. Those changes are legitimate findings and should land
+as separate reviewable commits with tests.
+
+Known later obligations include:
+
+1. null/string preconditions around helpers such as validation/parsing;
+2. `size_t` overflow in expressions such as `sizeof(T) * (count + 1)` before
+   `realloc`;
+3. minimum readable string length assumptions in MAC parsing;
+4. precise ownership transfer and cleanup on allocation failures;
+5. any source construct that blocks the selected CompCert subset without adding
+   meaningful program value.
+
+Do not modify `build_magic_packet` merely to make the first theorem artificially
+easy unless the patch is independently defensible C engineering.
 
 ## Trusted computing base
 
-For the Lean source theorem, expected TCB/assumptions include:
+For the initial Lean theorem, expected trusted components/assumptions include:
 
 - Lean 4 kernel;
-- C parser/importer unless proved correct;
-- formal C-fragment semantics;
-- explicit libc/POSIX contracts;
-- source-byte/hash binding.
+- the C importer/parser unless its correctness is itself proved;
+- the formal C-fragment semantics;
+- explicit `memcpy` / `memset` contracts;
+- source-byte/hash binding mechanism.
 
-For the compiled-artifact claim add, as applicable:
+For later compiled-artifact claims add, where applicable:
 
-- correctness assumptions in the Lean↔CompCert semantic bridge;
-- CompCert's own stated trusted base and unverified front/back seams;
+- any assumptions in the Lean↔CompCert bridge;
+- CompCert's documented trusted/unverified seams;
 - assembler;
 - linker;
-- target sysroot/runtime;
-- Nix and the pinned build inputs as reproducibility infrastructure.
+- runtime/sysroot;
+- Nix/build machinery as reproducibility infrastructure.
 
-Do **not** silently claim kernel, libc implementation, hardware or ordinary
-GCC/Clang correctness.
-
-Run `#print axioms` on top-level Lean theorems and document all remaining
-non-standard assumptions.
-
-## Source and build binding
-
-A green proof against stale source is invalid.
-
-The proof/build system should:
-
-1. hash every verified `src/*.c` and relevant header;
-2. parse exactly those bytes;
-3. expose hashes as proof metadata;
-4. fail if source differs from the proved AST;
-5. pin all Nix inputs in `flake.lock`;
-6. record CompCert version and relevant flags;
-7. hash generated assembly;
-8. hash final executable artifacts;
-9. optionally reproduce the build independently and compare hashes.
+Every top-level theorem should have `#print axioms` recorded.
 
 ## Milestones
 
-### M0 — reproducible toolchain skeleton
+### P0 — deterministic workspace
 
-- Commit `flake.nix`.
-- Generate and commit `flake.lock` on a machine with Nix.
-- Verify `nix flake check` on supported hosts.
-- Confirm `ccomp`, `lean`, `lake`, GCC/Clang and current tests are reachable
-  through the environment.
+- keep CI green;
+- generate and commit `flake.lock` on a Nix-capable machine;
+- run `nix flake check`;
+- confirm pinned `lean`, `lake` and `ccomp` versions;
+- confirm CompCert accepts the relevant `wall-c` subset.
 
-Exit criterion: toolchain versions are pinned and reconstructible.
+Exit criterion: the tool environment is reconstructible.
 
-### M1 — proof skeleton
+### P1 — mechanical source import
 
-- Create Lean project under `proof/`.
-- Pin Lean dependencies.
-- Define byte-addressable memory/allocation validity.
-- Encode enough statements/loops/calls for `packet.c`.
+- create the Lean project;
+- import the actual `src/packet.c` function mechanically;
+- bind the imported representation to exact source bytes/hashes;
+- make unsupported syntax fail closed.
 
-Exit criterion: Lean checks a non-trivial memory-safety lemma.
+Exit criterion: changing the C function invalidates/regenerates the proof input.
 
-### M2 — first actual C function
+### P2 — first source theorem
 
-- Mechanically import `build_magic_packet`.
-- Prove its exact 102-byte footprint and packet layout.
+- implement only the memory semantics needed by `build_magic_packet`;
+- formalize `memset` and `memcpy` contracts;
+- prove in-bounds execution;
+- prove exact packet layout;
+- record `#print axioms`.
 
-Exit criterion: theorem is attached to the parsed C function, not merely a Lean
-rewrite.
+Exit criterion: a kernel-checked theorem refers to the mechanically imported C
+function.
 
-### M3 — validation pipeline
+### P3 — CompCert bridge
 
-Verify normalization, canonical validation and MAC parsing; land narrowly scoped
-hardening patches where appropriate.
+- compile the pinned source with pinned CompCert;
+- identify the exact CompCert representation at the source semantic boundary;
+- define and prove/check correspondence with the Lean representation;
+- record generated assembly hash.
 
-### M4 — heap ownership
+Exit criterion: the Lean theorem and CompCert input are connected by a checked
+argument, not by visual comparison.
 
-Verify `config.c` allocation and cleanup logic, including integer-overflow
-obligations and every allocation-failure path.
+### P4 — reproducibility
 
-### M5 — whole runtime
+- pin preprocessing strategy, assembler/linker/sysroot where used;
+- rebuild independently from the same `flake.lock`;
+- compare assembly and final artifact hashes;
+- document any residual nondeterminism or unverified seams.
 
-Verify remaining CLI, network, probe and engine behavior under explicit external
-contracts.
+Exit criterion: all four PoC-gate sections A–D are satisfied.
 
-### M6 — whole-program Lean theorem
+## PoC decision point
 
-- prove top-level source memory safety;
-- prove required owned-heap cleanup properties;
-- record `#print axioms`;
-- bind the theorem to source hashes.
+At P4, stop and assess the result before doing more proof work.
 
-### M7 — CompCert semantic bridge
+Questions:
 
-- determine exact overlap between the Lean-modeled C fragment and CompCert C;
-- define or mechanically validate a translation/correspondence relation;
-- prove that the Lean safety theorem applies to the representation fed to
-  CompCert;
-- compile to assembly with the pinned `ccomp`.
+- Is the source-import path small and auditable?
+- Is the C semantics model credible rather than tailored to one happy path?
+- Is the Lean↔CompCert bridge maintainable?
+- Is the TCB acceptably small and explicit?
+- Does a C source edit reliably invalidate the relevant proof?
+- Is the cost per additional C function reasonable?
 
-Exit criterion: the source theorem and CompCert input are connected by an
-explicit checked argument rather than human inspection.
+If the answer is no, redesign the method while the experiment is still small.
 
-### M8 — reproducible compiled artifact
+If yes, continue with the rest of `wall-c`.
 
-- pin preprocessing strategy;
-- pin assembler/linker/sysroot;
-- compare assembly and executable hashes across independent Nix builds;
-- document every remaining unverified seam.
+## Whole-program milestones after PoC
 
-This milestone produces a strong compiled-artifact story, but it must still be
-worded according to the exact assumptions actually discharged.
+### W1 — validation pipeline
+
+Verify `validate_mac`, `normalize_mac` and `parse_mac`, including explicit caller
+preconditions or defensible hardening patches.
+
+### W2 — configuration ownership
+
+Verify `config.c` heap/list invariants:
+
+- safe `realloc` growth;
+- overflow guards/proofs;
+- ownership transfer exactly once;
+- cleanup on every partial failure;
+- no double-free/use-after-free;
+- desired no-leak termination properties.
+
+### W3 — remaining runtime
+
+Verify CLI, engine, network and probe paths under explicit POSIX contracts.
+
+### W4 — whole-program theorem
+
+- prove whole-program memory safety;
+- prove the selected heap-cleanup theorem;
+- bind theorem to all relevant source hashes;
+- record `#print axioms` and final TCB.
 
 ## Success criterion
 
-For the source theorem, an acceptable final statement is:
+The **proof-of-concept** succeeds when we can truthfully say:
 
-> For the pinned `wall-c` C source, under the stated C-library and POSIX
-> contracts, Lean 4 proves that every modeled execution is free of memory
-> undefined behavior; owned heap storage is also proved to be released on the
-> specified termination paths.
+> For the exact pinned `build_magic_packet` C source, Lean 4 mechanically checks
+> memory safety and the exact packet layout; the proved representation is linked
+> by an explicit checked correspondence to the CompCert input; and the resulting
+> build artifacts are reproducible from pinned Nix inputs, with all remaining
+> trusted seams documented.
 
-For a later compiled-artifact statement, additionally require an explicit
-Lean↔CompCert correspondence argument and a pinned reproducible build chain.
-Anything weaker must be described more narrowly.
+Only after that claim is real should this verification method be treated as a
+candidate for a larger target.
+
+The **whole `wall-c`** success criterion is stronger:
+
+> For the pinned `wall-c` C source, under the stated libc and POSIX contracts,
+> Lean 4 proves every modeled execution free of the specified memory undefined
+> behavior, with separate ownership/cleanup guarantees and an explicitly bounded
+> compiler/build trust chain.
